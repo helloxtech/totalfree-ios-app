@@ -148,10 +148,19 @@ struct PushDeviceRegistrationBody: Encodable {
     }
 
     private static var currentEnvironment: String {
+        if let configuredApnsEnvironment {
+            return configuredApnsEnvironment == "development" ? "sandbox" : "production"
+        }
         #if DEBUG
-        "sandbox"
+        return "sandbox"
         #else
-        "production"
+        return "production"
         #endif
+    }
+
+    private static var configuredApnsEnvironment: String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "TotalFreeAPNSEnvironment") as? String else { return nil }
+        let environment = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["development", "production"].contains(environment) ? environment : nil
     }
 }
