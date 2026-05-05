@@ -1,0 +1,78 @@
+import UIKit
+import UserNotifications
+
+final class PushNotificationService: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = PushNotificationService()
+
+    private weak var appState: AppState?
+    private let tokenKey = "ca.totalfree.admin.apnsDeviceToken"
+
+    var currentDeviceToken: String? {
+        UserDefaults.standard.string(forKey: tokenKey)
+    }
+
+    @MainActor
+    func configure(appState: AppState) {
+        self.appState = appState
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    @MainActor
+    func requestAuthorizationAndRegister() async {
+        do {
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
+            guard granted else { return }
+            UIApplication.shared.registerForRemoteNotifications()
+        } catch {
+            appState?.recordPushRegistrationFailure(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    func registerStoredTokenIfAvailable() async {
+        guard let currentDeviceToken else { return }
+        await appState?.registerPushDeviceToken(currentDeviceToken)
+    }
+
+    @MainActor
+    func didRegisterForRemoteNotifications(deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        UserDefaults.standard.set(token, forKey: tokenKey)
+        Task {
+            await appState?.registerPushDeviceToken(token)
+        }
+    }
+
+    @MainActor
+    func didFailToRegisterForRemoteNotifications(error: Error) {
+        appState?.recordPushRegistrationFailure(error.localizedDescription)
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list, .sound, .badge])
+    }
+}
+
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        Task { @MainActor in
+            PushNotificationService.shared.didRegisterForRemoteNotifications(deviceToken: deviceToken)
+        }
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        Task { @MainActor in
+            PushNotificationService.shared.didFailToRegisterForRemoteNotifications(error: error)
+        }
+    }
+}
