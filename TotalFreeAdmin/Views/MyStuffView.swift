@@ -24,17 +24,17 @@ struct MyStuffView: View {
                 } else {
                     List {
                         if !offers.isEmpty {
-                            Section {
+                            Section("Giving away (\(offers.count))") {
                                 ForEach(offers) { postRow($0) }
-                            } header: { if showKindHeaders { Text("Giving away") } }
+                            }
                         }
                         if !wanted.isEmpty {
-                            Section {
+                            Section("Wanted (\(wanted.count))") {
                                 ForEach(wanted) { postRow($0) }
-                            } header: { if showKindHeaders { Text("Wanted") } }
+                            }
                         }
                     }
-                    .listStyle(.plain)
+                    .listStyle(.insetGrouped)
                     .refreshable { await reload() }
                 }
             }
@@ -55,7 +55,6 @@ struct MyStuffView: View {
 
     private var offers: [Listing] { listings.filter { $0.listingKind != "wanted" } }
     private var wanted: [Listing] { listings.filter { $0.listingKind == "wanted" } }
-    private var showKindHeaders: Bool { !offers.isEmpty && !wanted.isEmpty }
 
     private func postRow(_ listing: Listing) -> some View {
         NavigationLink { ListingDetailView(listing: listing) } label: { ListingCard(listing: listing) }
@@ -161,8 +160,25 @@ struct RequestThreadView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !readOnly && isIncoming && status == "pending" {
-                decisionBar
+            NavigationLink {
+                ListingLoaderView(listingId: request.listingId)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "shippingbox").foregroundStyle(Theme.accent)
+                    Text(request.itemTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Spacer()
+                    Text("View post").font(.caption).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal).padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(.bar)
+            Divider()
+
+            if !readOnly && isIncoming && ["pending", "accepted", "declined"].contains(status) {
+                manageBar
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
@@ -185,7 +201,7 @@ struct RequestThreadView: View {
                 composer
             }
         }
-        .navigationTitle(request.itemTitle)
+        .navigationTitle("Conversation")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { StatusBadge(status: status) }
@@ -197,16 +213,27 @@ struct RequestThreadView: View {
         .refreshable { await loadMessages() }
     }
 
-    private var decisionBar: some View {
+    /// Owner controls — decisions can be changed (Accepted ↔ Declined) any time.
+    private var manageBar: some View {
         HStack(spacing: 10) {
-            Button { Task { await setStatus("accepted") } } label: {
-                Label("Accept", systemImage: "checkmark").frame(maxWidth: .infinity)
+            if status == "pending" || status == "declined" {
+                Button { Task { await setStatus("accepted") } } label: {
+                    Label(status == "declined" ? "Accept instead" : "Accept", systemImage: "checkmark").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
-            Button(role: .destructive) { Task { await setStatus("declined") } } label: {
-                Label("Decline", systemImage: "xmark").frame(maxWidth: .infinity)
+            if status == "pending" || status == "accepted" {
+                Button(role: .destructive) { Task { await setStatus("declined") } } label: {
+                    Label(status == "accepted" ? "Change to decline" : "Decline", systemImage: "xmark").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.bordered)
+            if status == "accepted" {
+                Button { Task { await setStatus("completed") } } label: {
+                    Label("Done", systemImage: "checkmark.circle").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .padding(.horizontal).padding(.vertical, 8)
         .background(.bar)
@@ -223,10 +250,6 @@ struct RequestThreadView: View {
                 Image(systemName: "arrow.up.circle.fill").font(.title2)
             }
             .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
-            if isIncoming && status == "accepted" {
-                Button("Done") { Task { await setStatus("completed") } }
-                    .font(.caption)
-            }
         }
         .padding(10)
         .background(.bar)

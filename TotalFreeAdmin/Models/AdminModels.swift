@@ -215,6 +215,19 @@ struct AppNotification: Codable, Identifiable, Equatable {
     var targetListingId: String? { data?.listingId }
     var targetRequestId: String? { data?.requestId }
 
+    /// Clearer, distinct titles so "request" vs "message" alerts don't blur together.
+    var displayTitle: String {
+        switch type {
+        case "request_new": "New request on your post"
+        case "request_update": "Request update"
+        case "message_new": "New message"
+        case "listing_approved": "Post approved"
+        case "sponsor_approved": "Business approved"
+        case "match_found": "New match"
+        default: title
+        }
+    }
+
     var icon: String {
         switch type {
         case "request_new": "hands.sparkles"

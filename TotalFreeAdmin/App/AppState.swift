@@ -150,6 +150,12 @@ final class AppState: ObservableObject {
         await refreshNotifications()
     }
 
+    func deleteNotification(_ id: String) async {
+        notifications.removeAll { $0.id == id }
+        unreadCount = notifications.filter { !$0.read }.count
+        await perform { try await $0.deleteNotification(id: id) }
+    }
+
     func markAllNotificationsRead() async {
         guard let uid = userId else { return }
         await perform { try await $0.markAllNotificationsRead(userId: uid) }

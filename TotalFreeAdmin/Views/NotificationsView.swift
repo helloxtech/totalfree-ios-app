@@ -13,25 +13,18 @@ struct NotificationsView: View {
                         systemImage: "bell"
                     )
                 } else {
-                    List(appState.notifications) { note in
-                        NavigationLink {
-                            NotificationDetailView(note: note)
-                        } label: {
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: note.icon)
-                                    .foregroundStyle(note.read ? .secondary : Theme.accent)
-                                    .frame(width: 26)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(note.title)
-                                        .font(.subheadline.weight(note.read ? .regular : .semibold))
-                                    if let body = note.body, !body.isEmpty {
-                                        Text(body).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                                    }
-                                    Text(relativeDate(note.createdAt)).font(.caption2).foregroundStyle(.tertiary)
-                                }
-                                Spacer(minLength: 0)
-                                if !note.read {
-                                    Circle().fill(Theme.accent).frame(width: 8, height: 8)
+                    List {
+                        ForEach(appState.notifications) { note in
+                            NavigationLink {
+                                NotificationDetailView(note: note)
+                            } label: {
+                                row(note)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task { await appState.deleteNotification(note.id) }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
                                 }
                             }
                         }
@@ -51,6 +44,26 @@ struct NotificationsView: View {
             .task { await appState.refreshNotifications() }
         }
     }
+
+    private func row(_ note: AppNotification) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: note.icon)
+                .foregroundStyle(note.read ? .secondary : Theme.accent)
+                .frame(width: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(note.displayTitle)
+                    .font(.subheadline.weight(note.read ? .regular : .semibold))
+                if let body = note.body, !body.isEmpty {
+                    Text(body).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                }
+                Text(relativeDate(note.createdAt)).font(.caption2).foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 0)
+            if !note.read {
+                Circle().fill(Theme.accent).frame(width: 8, height: 8)
+            }
+        }
+    }
 }
 
 /// Opens an alert: shows its content, marks it read, and deep-links to the
@@ -65,7 +78,7 @@ struct NotificationDetailView: View {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: note.icon).font(.title3).foregroundStyle(Theme.accent).frame(width: 28)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(note.title).font(.headline)
+                        Text(note.displayTitle).font(.headline)
                         if let body = note.body, !body.isEmpty { Text(body).font(.subheadline) }
                         Text(relativeDate(note.createdAt)).font(.caption).foregroundStyle(.secondary)
                     }

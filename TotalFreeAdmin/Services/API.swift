@@ -172,6 +172,10 @@ extension SupabaseClient {
         try await restPatchNoReturn("/rest/v1/notifications?id=eq.\(id)", body: NotificationReadUpdate(read: true))
     }
 
+    func deleteNotification(id: String) async throws {
+        try await restDeleteNoReturn("/rest/v1/notifications?id=eq.\(id)")
+    }
+
     func markAllNotificationsRead(userId: String) async throws {
         try await restPatchNoReturn(
             "/rest/v1/notifications?user_id=eq.\(userId)&read=eq.false",

@@ -78,14 +78,6 @@ struct AccountView: View {
                 }
             }
 
-            if appState.isStaff {
-                Section("Role") {
-                    Label("You have \(appState.role.label) access — the Admin tab has your moderation tools.",
-                          systemImage: "checkmark.shield")
-                        .font(.subheadline)
-                }
-            }
-
             Section {
                 Button(role: .destructive) {
                     appState.signOut()
