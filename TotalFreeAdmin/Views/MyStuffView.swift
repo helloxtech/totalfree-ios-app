@@ -22,8 +22,17 @@ struct MyStuffView: View {
                 } else if listings.isEmpty {
                     EmptyState(title: "No posts yet", message: "Tap ＋ to give something away or post a wanted.", systemImage: "shippingbox")
                 } else {
-                    List(listings) { listing in
-                        NavigationLink { ListingDetailView(listing: listing) } label: { ListingCard(listing: listing) }
+                    List {
+                        if !offers.isEmpty {
+                            Section {
+                                ForEach(offers) { postRow($0) }
+                            } header: { if showKindHeaders { Text("Giving away") } }
+                        }
+                        if !wanted.isEmpty {
+                            Section {
+                                ForEach(wanted) { postRow($0) }
+                            } header: { if showKindHeaders { Text("Wanted") } }
+                        }
                     }
                     .listStyle(.plain)
                     .refreshable { await reload() }
@@ -42,6 +51,14 @@ struct MyStuffView: View {
             }
             .task { await reload() }
         }
+    }
+
+    private var offers: [Listing] { listings.filter { $0.listingKind != "wanted" } }
+    private var wanted: [Listing] { listings.filter { $0.listingKind == "wanted" } }
+    private var showKindHeaders: Bool { !offers.isEmpty && !wanted.isEmpty }
+
+    private func postRow(_ listing: Listing) -> some View {
+        NavigationLink { ListingDetailView(listing: listing) } label: { ListingCard(listing: listing) }
     }
 
     private func reload() async {
