@@ -156,6 +156,19 @@ final class AppState: ObservableObject {
         await refreshNotifications()
     }
 
+    /// Unread alerts that relate to conversations — drives the Messages tab badge.
+    var messagesUnreadCount: Int {
+        notifications.filter { !$0.read && ["message_new", "request_new", "request_update"].contains($0.type) }.count
+    }
+
+    /// Clear conversation alerts for one request when its thread is opened.
+    func markNotificationsForRequest(_ requestId: String) async {
+        let ids = notifications.filter { !$0.read && $0.targetRequestId == requestId }.map { $0.id }
+        guard !ids.isEmpty else { return }
+        for id in ids { _ = await perform { try await $0.markNotificationRead(id: id) } }
+        await refreshNotifications()
+    }
+
     // MARK: - Push registration callbacks
 
     func registerPushDeviceToken(_ token: String) async {

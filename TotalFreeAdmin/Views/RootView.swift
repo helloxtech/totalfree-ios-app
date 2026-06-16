@@ -15,7 +15,11 @@ struct RootView: View {
 
             if appState.isAuthed {
                 MyStuffView()
-                    .tabItem { Label("My Stuff", systemImage: "shippingbox") }
+                    .tabItem { Label("My Posts", systemImage: "shippingbox") }
+
+                MessagesView()
+                    .tabItem { Label("Messages", systemImage: "bubble.left.and.bubble.right") }
+                    .badge(appState.messagesUnreadCount)
 
                 NotificationsView()
                     .tabItem { Label("Alerts", systemImage: "bell") }

@@ -113,6 +113,8 @@ struct Listing: Codable, Identifiable, Equatable {
     let neededBy: String?
     let city: String?
     let area: String?
+    let lat: Double?
+    let lng: Double?
     let imageUrl: String?
     let imageUrls: [String]?
     let externalUrl: String?

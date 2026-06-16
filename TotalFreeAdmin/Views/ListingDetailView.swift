@@ -1,4 +1,6 @@
 import SwiftUI
+import MapKit
+import CoreLocation
 
 struct ListingDetailView: View {
     @EnvironmentObject private var appState: AppState
@@ -10,6 +12,7 @@ struct ListingDetailView: View {
     @State private var showAuth = false
     @State private var showEdit = false
     @State private var confirmDelete = false
+    @State private var geocoded: CLLocationCoordinate2D?
 
     private var isOwner: Bool { listing.ownerId != nil && listing.ownerId == appState.userId }
 
@@ -39,8 +42,14 @@ struct ListingDetailView: View {
                     if let cond = listing.conditionLabel {
                         Label(cond, systemImage: "sparkles").font(.caption).foregroundStyle(.secondary)
                     }
-                    Label(listing.locationText, systemImage: "mappin.and.ellipse")
-                        .font(.caption).foregroundStyle(.secondary)
+                    if let coord = mapCoordinate {
+                        Button { openInMaps(coord) } label: {
+                            Label(listing.locationText, systemImage: "mappin.and.ellipse").font(.caption)
+                        }
+                    } else {
+                        Label(listing.locationText, systemImage: "mappin.and.ellipse")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
 
                 if !listing.description.isEmpty {
@@ -58,6 +67,10 @@ struct ListingDetailView: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+
+                if let coord = mapCoordinate {
+                    mapPreview(coord)
+                }
 
                 actions
 
@@ -90,6 +103,7 @@ struct ListingDetailView: View {
             Text("This permanently removes the post.")
         }
         .task { await refresh() }
+        .task { await geocodeIfNeeded() }
     }
 
     // MARK: Photo gallery
@@ -99,30 +113,77 @@ struct ListingDetailView: View {
         let urls = listing.galleryUrls
         if urls.count > 1 {
             TabView {
-                ForEach(urls, id: \.self) { url in
-                    AsyncImage(url: URL(string: url)) { phase in
-                        if let img = phase.image { img.resizable().scaledToFill() }
-                        else { Rectangle().fill(Color(.secondarySystemFill)) }
-                    }
-                    .clipped()
-                }
+                ForEach(urls, id: \.self) { url in photoFill(url) }
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
+            .frame(maxWidth: .infinity)
             .frame(height: 240)
             .clipShape(RoundedRectangle(cornerRadius: 18))
-        } else if let url = urls.first, let u = URL(string: url) {
-            AsyncImage(url: u) { phase in
-                if let img = phase.image {
-                    img.resizable().scaledToFill()
-                } else {
-                    Rectangle().fill(Color(.secondarySystemFill))
-                        .overlay { Image(systemName: "gift").font(.largeTitle).foregroundStyle(.secondary) }
+        } else if let url = urls.first {
+            photoFill(url)
+                .frame(maxWidth: .infinity)
+                .frame(height: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
+    // A flexible box (never wider than the screen) filled with the photo. Using a
+    // sizer + overlay keeps `scaledToFill` from driving layout width.
+    private func photoFill(_ url: String) -> some View {
+        Color(.secondarySystemFill)
+            .overlay {
+                AsyncImage(url: URL(string: url)) { phase in
+                    if let img = phase.image { img.resizable().scaledToFill() }
+                    else if phase.error != nil { Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary) }
+                    else { ProgressView() }
                 }
             }
-            .frame(height: 220)
-            .frame(maxWidth: .infinity)
             .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    // MARK: Location / map
+
+    private var mapCoordinate: CLLocationCoordinate2D? {
+        if let lat = listing.lat, let lng = listing.lng { return CLLocationCoordinate2D(latitude: lat, longitude: lng) }
+        return geocoded
+    }
+
+    private func mapPreview(_ coord: CLLocationCoordinate2D) -> some View {
+        Map(initialPosition: .region(MKCoordinateRegion(
+            center: coord,
+            span: MKCoordinateSpan(latitudeDelta: 0.04, longitudeDelta: 0.04)
+        ))) {
+            Marker(listing.locationText, coordinate: coord).tint(Theme.accent)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 160)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .allowsHitTesting(false)
+        .overlay(alignment: .bottomTrailing) {
+            Button { openInMaps(coord) } label: {
+                Label("Open in Maps", systemImage: "arrow.up.right.square")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(.thinMaterial, in: Capsule())
+            }
+            .padding(8)
+        }
+    }
+
+    private func openInMaps(_ c: CLLocationCoordinate2D) {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: c))
+        item.name = listing.locationText
+        item.openInMaps()
+    }
+
+    private func geocodeIfNeeded() async {
+        guard listing.lat == nil || listing.lng == nil, geocoded == nil else { return }
+        let parts = [listing.area, listing.city].compactMap { ($0?.isEmpty == false) ? $0 : nil }
+        guard !parts.isEmpty else { return }
+        let query = (parts + ["BC, Canada"]).joined(separator: ", ")
+        if let placemarks = try? await CLGeocoder().geocodeAddressString(query),
+           let loc = placemarks.first?.location {
+            geocoded = loc.coordinate
         }
     }
 

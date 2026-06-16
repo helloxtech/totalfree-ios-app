@@ -1,12 +1,9 @@
 import SwiftUI
 
+/// My posts — the listings I've shared. Posting also happens here (+ button).
 struct MyStuffView: View {
     @EnvironmentObject private var appState: AppState
-    enum Tab: String, CaseIterable { case listings = "My posts", requests = "Messages" }
-
-    @State private var tab: Tab = .listings
     @State private var listings: [Listing] = []
-    @State private var requests: [AppRequest] = []
     @State private var loading = false
     @State private var showPost = false
 
@@ -15,24 +12,26 @@ struct MyStuffView: View {
             Group {
                 if !appState.isAuthed {
                     SignInPrompt(
-                        title: "Your stuff lives here",
-                        message: "Sign in to see your posts, requests, and messages.",
+                        title: "Your posts live here",
+                        message: "Sign in to share items and manage what you've posted.",
                         systemImage: "shippingbox"
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if loading && listings.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if listings.isEmpty {
+                    EmptyState(title: "No posts yet", message: "Tap ＋ to give something away or post a wanted.", systemImage: "shippingbox")
                 } else {
-                    content
+                    List(listings) { listing in
+                        NavigationLink { ListingDetailView(listing: listing) } label: { ListingCard(listing: listing) }
+                    }
+                    .listStyle(.plain)
+                    .refreshable { await reload() }
                 }
             }
-            .navigationTitle("My Stuff")
+            .navigationTitle("My Posts")
             .toolbar {
                 if appState.isAuthed {
-                    ToolbarItem(placement: .principal) {
-                        Picker("View", selection: $tab) {
-                            ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showPost = true } label: { Label("New post", systemImage: "plus") }
                     }
@@ -42,29 +41,41 @@ struct MyStuffView: View {
                 PostView(asSheet: true)
             }
             .task { await reload() }
-            .onChange(of: tab) { _, _ in Task { await reload() } }
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if loading && listings.isEmpty && requests.isEmpty {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            switch tab {
-            case .listings:
-                if listings.isEmpty {
-                    EmptyState(title: "No posts yet", message: "Items you post will show here with their review status.", systemImage: "shippingbox")
-                } else {
-                    List(listings) { listing in
-                        NavigationLink { ListingDetailView(listing: listing) } label: { ListingCard(listing: listing) }
-                    }
-                    .listStyle(.plain)
-                    .refreshable { await reload() }
-                }
-            case .requests:
-                if requests.isEmpty {
-                    EmptyState(title: "No messages yet", message: "When you ask for an item or someone asks about your post, the conversation shows here.", systemImage: "bubble.left.and.bubble.right")
+    private func reload() async {
+        guard let uid = appState.userId else { return }
+        loading = true
+        defer { loading = false }
+        if let r = await appState.load({ try await $0.fetchMyListings(ownerId: uid) }) { listings = r }
+    }
+}
+
+/// Messages — every conversation I'm part of (requests I sent and received).
+struct MessagesView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var requests: [AppRequest] = []
+    @State private var loading = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if !appState.isAuthed {
+                    SignInPrompt(
+                        title: "Your messages live here",
+                        message: "Sign in to message neighbours about items.",
+                        systemImage: "bubble.left.and.bubble.right"
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if loading && requests.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if requests.isEmpty {
+                    EmptyState(
+                        title: "No messages yet",
+                        message: "When you ask for an item or someone asks about your post, the conversation shows here.",
+                        systemImage: "bubble.left.and.bubble.right"
+                    )
                 } else {
                     List(requests) { req in
                         NavigationLink { RequestThreadView(request: req) } label: {
@@ -75,6 +86,8 @@ struct MyStuffView: View {
                     .refreshable { await reload() }
                 }
             }
+            .navigationTitle("Messages")
+            .task { await reload() }
         }
     }
 
@@ -82,12 +95,8 @@ struct MyStuffView: View {
         guard let uid = appState.userId else { return }
         loading = true
         defer { loading = false }
-        switch tab {
-        case .listings:
-            if let r = await appState.load({ try await $0.fetchMyListings(ownerId: uid) }) { listings = r }
-        case .requests:
-            if let r = await appState.load({ try await $0.fetchMyRequests(userId: uid) }) { requests = r }
-        }
+        if let r = await appState.load({ try await $0.fetchMyRequests(userId: uid) }) { requests = r }
+        await appState.refreshNotifications()
     }
 }
 
@@ -164,7 +173,10 @@ struct RequestThreadView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { StatusBadge(status: status) }
         }
-        .task { await loadMessages() }
+        .task {
+            await loadMessages()
+            if !readOnly { await appState.markNotificationsForRequest(request.id) }
+        }
         .refreshable { await loadMessages() }
     }
 

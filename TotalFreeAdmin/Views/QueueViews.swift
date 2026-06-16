@@ -71,13 +71,19 @@ struct ModerationDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let url = listing.imageUrl, let u = URL(string: url) {
-                    AsyncImage(url: u) { phase in
-                        if let img = phase.image { img.resizable().scaledToFill() }
-                        else { Rectangle().fill(Color(.secondarySystemFill)) }
-                    }
-                    .frame(height: 200).frame(maxWidth: .infinity).clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                if let url = listing.imageUrl, !url.isEmpty {
+                    Color(.secondarySystemFill)
+                        .overlay {
+                            AsyncImage(url: URL(string: url)) { phase in
+                                if let img = phase.image { img.resizable().scaledToFill() }
+                                else if phase.error != nil { Image(systemName: "photo").foregroundStyle(.secondary) }
+                                else { ProgressView() }
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 200)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
                 HStack { SourceBadge(sourceType: listing.sourceType); if listing.isWanted { Text("WANTED").font(.caption.bold()).foregroundStyle(.blue) } }
                 Text(listing.title).font(.title3.bold())
