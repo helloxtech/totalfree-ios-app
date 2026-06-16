@@ -149,6 +149,7 @@ struct RequestThreadView: View {
     @State private var draft = ""
     @State private var status: String
     @State private var loading = false
+    @State private var confirmComplete = false
 
     init(request: AppRequest, readOnly: Bool = false) {
         self.request = request
@@ -177,7 +178,7 @@ struct RequestThreadView: View {
             .background(.bar)
             Divider()
 
-            if !readOnly && isIncoming && ["pending", "accepted", "declined"].contains(status) {
+            if !readOnly && isIncoming && ["pending", "accepted", "declined", "completed"].contains(status) {
                 manageBar
             }
             ScrollView {
@@ -211,6 +212,12 @@ struct RequestThreadView: View {
             if !readOnly { await appState.markNotificationsForRequest(request.id) }
         }
         .refreshable { await loadMessages() }
+        .confirmationDialog("Mark this completed?", isPresented: $confirmComplete, titleVisibility: .visible) {
+            Button("Mark completed") { Task { await setStatus("completed") } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Do this once the item has changed hands. You can reopen it later if needed.")
+        }
     }
 
     /// Owner controls — decisions can be changed (Accepted ↔ Declined) any time.
@@ -229,8 +236,14 @@ struct RequestThreadView: View {
                 .buttonStyle(.bordered)
             }
             if status == "accepted" {
-                Button { Task { await setStatus("completed") } } label: {
-                    Label("Done", systemImage: "checkmark.circle").frame(maxWidth: .infinity)
+                Button { confirmComplete = true } label: {
+                    Label("Mark completed", systemImage: "checkmark.seal").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            if status == "completed" {
+                Button { Task { await setStatus("accepted") } } label: {
+                    Label("Reopen", systemImage: "arrow.uturn.backward").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
             }
