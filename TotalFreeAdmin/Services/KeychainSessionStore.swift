@@ -12,9 +12,12 @@ protocol SessionStoring {
     func clear()
 }
 
+/// Persists the signed-in Supabase session (access + refresh token + user) in
+/// the iOS Keychain. Encoded/decoded with a plain coder so the round trip is
+/// self-consistent regardless of how the response was originally parsed.
 final class KeychainSessionStore: SessionStoring {
-    private let service = "ca.totalfree.admin"
-    private let account = "staff-session"
+    private let service = "ca.totalfree.app"
+    private let account = "supabase-session"
 
     func load() -> AuthSession? {
         var query = baseQuery()
@@ -47,7 +50,7 @@ final class KeychainSessionStore: SessionStoring {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account,
         ]
     }
 }

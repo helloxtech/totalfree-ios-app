@@ -1,75 +1,64 @@
 # Architecture Notes
 
-## Agreed Direction
+## Agreed Direction (current)
 
-The mobile admin app is a thin native client over the existing Total Free backend:
+The iOS app is a native client over the **TotalFree-Claude Supabase backend**, talking
+directly to Supabase. It mirrors how the web app works.
 
 ```text
-iOS Admin App -> Cloudflare Worker API -> Supabase / R2
+iOS App ─┬─ Supabase Auth (GoTrue)      sign in / sign up / refresh
+         ├─ Supabase PostgREST          tables (listings, requests, messages, …)
+         └─ Supabase RPC (SECURITY DEFINER)  moderate_listing, admin_list_users,
+                                             set_user_role, report_listing
+                         │
+                  Row Level Security  ← the real security boundary
 ```
 
-The app never connects directly to Supabase or R2. This keeps secrets out of the mobile bundle and keeps moderation logic centralized.
+There is **no Cloudflare Worker API** anymore. The app ships only the Supabase
+**publishable** key (safe in a client bundle); the `service_role` key is never embedded.
+Authorization is enforced by Postgres RLS / `has_perm(...)`, not by the client.
 
-## Roles
+> Superseded: the previous design routed everything through a Cloudflare Worker
+> (`iOS Admin App -> Worker -> Supabase / R2`) and kept the app staff-only. That is
+> no longer how this app works.
 
-The Worker remains the source of truth for role checks:
+## Audience & privileges
 
-- `moderator`: review posts and reports
-- `admin`: moderator permissions plus member status and invite-code operations
-- `super_admin`: admin permissions plus role management
+The app is open to everyone. UI is shown by role; the server enforces it.
 
-The iOS app hides unavailable tabs, but the Worker must still reject unauthorized requests.
+- **Signed out:** browse + search the public feed, view listings.
+- **Member (`user`, also `partner` / `sponsor`):** post, request, message, alerts, profile.
+- **Staff (`moderator` / `owner` / `admin`):** + Admin tab (moderation queue, reports).
+- **Owner (`owner` / `admin`):** + People & roles (`set_user_role`).
 
-## Current iOS Screens
+Mirrors the web app: `isStaff = {admin, owner, moderator}`, `isOwner = {admin, owner}`.
 
-- Login: email/password staff sign-in
-- Queue: dashboard stats and pending post review
-- Post Review Detail: post content, privacy checklist, approve/reject actions
-- Reports: open safety reports, sorted by severity
-- Report Detail: report context and resolve/dismiss actions
-- Members: member search, status, role controls
-- Access: invite-code creation and code list
+## Screens
 
-## API Surface Used
+- **Browse** — public feed with search + category/source/kind filters.
+- **Listing detail** — full listing, request flow, report flow.
+- **Post** — create a free item or "wanted" (→ `pending_review`).
+- **My Stuff** — my listings, my requests (incoming/outgoing), per-request chat.
+- **Alerts** — in-app notifications (bell badge = unread).
+- **Account** — profile, verification state, sign out.
+- **Admin** (staff) — moderation queue, safety reports, and (owners) people & roles.
 
-The app currently uses these Worker endpoints:
+## Data surface used
 
-- `POST /api/auth/login`
-- `GET /api/me`
-- `GET /api/admin/dashboard`
-- `POST /api/admin/posts/{id}/approve`
-- `POST /api/admin/posts/{id}/reject`
-- `POST /api/admin/reports/{id}/resolve`
-- `GET /api/admin/users`
-- `PATCH /api/admin/users/{id}/status`
-- `PATCH /api/admin/users/{id}/role`
-- `POST /api/admin/invite-codes`
-- `POST /api/push/devices`
-- `DELETE /api/push/devices/{deviceToken}`
+PostgREST tables: `listings`, `requests`, `messages`, `reports`, `notifications`,
+`profiles`, `device_tokens`.
 
-## Push Notifications
+RPCs: `moderate_listing(p_id, p_status)`, `report_listing(p_listing, p_reason, p_note)`,
+`admin_list_users()`, `set_user_role(target, new_role)`.
 
-The app never stores APNs provider secrets. It registers with iOS for remote notifications, then sends the APNs device token to the Worker after staff authorization is confirmed. The Worker stores active device tokens in Supabase and uses the Apple APNs provider key to deliver moderation alerts.
+Auth: `/auth/v1/token` (password + refresh grants), `/auth/v1/signup`.
 
-Build behavior:
+Keep this surface in sync with the web data layer at
+`TotalFree-Claude/src/lib/api.js`.
 
-- Debug: APNs sandbox token registration
-- Release: APNs production token registration
+## Notifications
 
-## Android-Ready Rule
-
-Future Android should not copy Swift code or business decisions. It should copy the contract:
-
-- Same HTTPS endpoints
-- Same request/response JSON shapes
-- Same token behavior
-- Same role permissions
-- Same moderation state machine
-
-Recommended next step before Android: publish a small `docs/api/openapi.yaml` from the Worker routes and keep it versioned with backend changes.
-
-## Known Phase 2 Gaps
-
-- Add a refresh-token endpoint or session renewal flow for long-lived mobile sessions.
-- Add an authenticated admin photo endpoint for pending-post photos, because public photo URLs should not expose pending content.
-- Add device-based QA on real iPhones before TestFlight.
+In-app notifications come from the `notifications` table. iOS push is delivered by the
+`send-push` Supabase edge function, which reads `device_tokens` (platform `ios`). The
+app registers its APNs token there after sign-in. The function's `APNS_BUNDLE_ID` must
+equal the app bundle id (`ca.totalfree.admin`).

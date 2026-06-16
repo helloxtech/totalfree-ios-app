@@ -9,9 +9,8 @@ struct TotalFreeAdminApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
-                .task {
-                    await appState.restoreSession()
-                }
+                .tint(Theme.accent)
+                .task { await appState.restoreSession() }
         }
     }
 }

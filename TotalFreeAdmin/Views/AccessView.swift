@@ -1,65 +1,128 @@
 import SwiftUI
 
-struct AccessView: View {
-    @EnvironmentObject private var appState: AppState
-    @State private var code = ""
-    @State private var label = ""
-    @State private var maxUses = 3
+/// Sign in / Join. Presented as a sheet from any place that needs an account.
+struct AuthView: View {
+    enum Mode: String, CaseIterable { case signIn = "Sign in", join = "Join" }
 
-    var inviteCodes: [InviteCode] {
-        appState.dashboard?.inviteCodes ?? []
-    }
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var mode: Mode = .signIn
+    @State private var name = ""
+    @State private var email = ""
+    @State private var password = ""
+    @FocusState private var focused: Field?
+    private enum Field { case name, email, password }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Create invite code") {
-                    TextField("Code", text: $code)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                    TextField("Label", text: $label)
-                    Stepper("Max uses: \(maxUses)", value: $maxUses, in: 1...500)
-                    Button {
-                        Task {
-                            await appState.createInviteCode(
-                                code: code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
-                                label: label,
-                                maxUses: maxUses
-                            )
-                            code = ""
-                            label = ""
-                            maxUses = 3
-                        }
-                    } label: {
-                        Label("Create code", systemImage: "plus.circle")
+            Form {
+                Section {
+                    Picker("Mode", selection: $mode) {
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
-                    .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                 }
 
-                Section("Existing codes") {
-                    if inviteCodes.isEmpty {
-                        EmptyStateRow(title: "No invite codes yet", message: "Create one for a flyer or parent group.", systemImage: "key")
-                    } else {
-                        ForEach(inviteCodes) { invite in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(maskInvite(invite.code))
-                                    .font(.headline)
-                                Text("\(invite.usedCount)/\(invite.maxUses) used · \(invite.label ?? "No label")")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 4)
+                Section {
+                    if mode == .join {
+                        TextField("Your name", text: $name)
+                            .textContentType(.name)
+                            .focused($focused, equals: .name)
+                    }
+                    TextField("Email", text: $email)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($focused, equals: .email)
+                    SecureField("Password", text: $password)
+                        .textContentType(mode == .join ? .newPassword : .password)
+                        .focused($focused, equals: .password)
+                }
+
+                Section {
+                    Button(action: submit) {
+                        HStack {
+                            Spacer()
+                            if appState.isBusy { ProgressView() }
+                            else { Text(mode == .signIn ? "Sign in" : "Create account").bold() }
+                            Spacer()
                         }
                     }
+                    .disabled(!canSubmit || appState.isBusy)
+                } footer: {
+                    Text(mode == .join
+                         ? "Browsing is always free. An account lets you post, request items, and message neighbours. You may need to confirm your email."
+                         : "Welcome back.")
                 }
             }
-            .navigationTitle("Access")
-            .refreshable { await appState.refreshDashboard() }
+            .navigationTitle(mode == .signIn ? "Sign in" : "Join TotalFree")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+            .onChange(of: appState.isAuthed) { _, authed in
+                if authed { dismiss() }
+            }
+        }
+    }
+
+    private var canSubmit: Bool {
+        let validEmail = email.contains("@") && email.contains(".")
+        let validPassword = password.count >= 6
+        let validName = mode == .signIn || !name.trimmingCharacters(in: .whitespaces).isEmpty
+        return validEmail && validPassword && validName
+    }
+
+    private func submit() {
+        focused = nil
+        Task {
+            switch mode {
+            case .signIn:
+                await appState.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
+            case .join:
+                await appState.signUp(
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    email: email.trimmingCharacters(in: .whitespaces),
+                    password: password
+                )
+            }
         }
     }
 }
 
-private func maskInvite(_ code: String) -> String {
-    guard code.count > 4 else { return code }
-    return String(code.prefix(3)) + "..." + String(code.suffix(3))
+/// Friendly call-to-action shown on member-only screens when signed out.
+struct SignInPrompt: View {
+    let title: String
+    let message: String
+    var systemImage: String = "person.crop.circle.badge.plus"
+    @State private var showAuth = false
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.system(size: 40))
+                .foregroundStyle(Theme.accent)
+            Text(title).font(.title3.bold())
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                showAuth = true
+            } label: {
+                Text("Sign in or join").bold().frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 4)
+        }
+        .padding(24)
+        .frame(maxWidth: 420)
+        .sheet(isPresented: $showAuth) { AuthView() }
+    }
 }

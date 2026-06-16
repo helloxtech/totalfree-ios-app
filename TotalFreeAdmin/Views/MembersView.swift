@@ -1,124 +1,176 @@
 import SwiftUI
 
-struct MembersView: View {
+/// People & roles. Visible with user.view; role changes require role.manage
+/// (`set_user_role` is also enforced server-side). Pushed inside the staff hub.
+struct UsersView: View {
     @EnvironmentObject private var appState: AppState
+    let canManageRoles: Bool
+
+    @State private var users: [AdminUserRow] = []
+    @State private var loading = false
     @State private var query = ""
 
-    var filteredUsers: [AdminUser] {
-        guard !query.isEmpty else { return appState.users }
-        return appState.users.filter {
-            $0.email.localizedCaseInsensitiveContains(query)
-            || $0.displayName.localizedCaseInsensitiveContains(query)
-            || $0.postalCode.localizedCaseInsensitiveContains(query)
+    private var filtered: [AdminUserRow] {
+        guard !query.isEmpty else { return users }
+        let q = query.lowercased()
+        return users.filter {
+            ($0.name?.lowercased().contains(q) ?? false) || ($0.email?.lowercased().contains(q) ?? false)
         }
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                if filteredUsers.isEmpty {
-                    EmptyStateRow(
-                        title: "No members match this search",
-                        message: "Try a name, email, or postal code.",
-                        systemImage: "person.crop.circle.badge.questionmark"
-                    )
-                } else {
-                    ForEach(filteredUsers) { user in
-                        NavigationLink {
-                            MemberDetailView(user: user)
-                        } label: {
-                            MemberRow(user: user)
-                        }
+        Group {
+            if loading && users.isEmpty {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(filtered) { user in
+                    NavigationLink {
+                        UserDetailView(user: user, canManage: canManageRoles) { Task { await reload() } }
+                    } label: {
+                        UserRowSummary(user: user)
                     }
                 }
             }
-            .searchable(text: $query, prompt: "Search members")
-            .navigationTitle("Members")
-            .task {
-                if appState.users.isEmpty {
-                    await appState.loadUsers()
-                }
-            }
-            .refreshable { await appState.loadUsers() }
         }
+        .navigationTitle("People & roles")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "Search name or email")
+        .refreshable { await reload() }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        loading = true
+        defer { loading = false }
+        if let r = await appState.load({ try await $0.adminListUsers() }) { users = r }
     }
 }
 
-struct MemberRow: View {
-    let user: AdminUser
-
+private struct UserRowSummary: View {
+    let user: AdminUserRow
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(user.displayName.isEmpty ? user.email : user.displayName)
-                .font(.headline)
-            Text(user.email)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            HStack {
-                Text(user.role.label)
-                Text(user.status.label)
-                if !user.postalCode.isEmpty { Text(user.postalCode) }
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(Theme.accent.opacity(0.15)).frame(width: 40, height: 40)
+                Text(initials(user.displayName)).font(.caption.bold()).foregroundStyle(Theme.accent)
             }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(user.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                if let email = user.email { Text(email).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+            }
+            Spacer()
+            RoleBadge(role: user.userRole)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+struct RoleBadge: View {
+    let role: UserRole
+    var body: some View {
+        Text(role.label)
             .font(.caption.bold())
-            .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(colorForRole(role).opacity(0.15), in: Capsule())
+            .foregroundStyle(colorForRole(role))
     }
 }
 
-struct MemberDetailView: View {
+/// User detail with optional role management.
+struct UserDetailView: View {
     @EnvironmentObject private var appState: AppState
-    let user: AdminUser
-    @State private var selectedStatus: AccountStatus
-    @State private var selectedRole: StaffRole
+    let user: AdminUserRow
+    let canManage: Bool
+    var onChanged: () -> Void
 
-    init(user: AdminUser) {
+    @State private var currentRole: UserRole
+    @State private var working = false
+    @State private var posts: [Listing] = []
+
+    init(user: AdminUserRow, canManage: Bool, onChanged: @escaping () -> Void) {
         self.user = user
-        _selectedStatus = State(initialValue: user.status)
-        _selectedRole = State(initialValue: user.role)
+        self.canManage = canManage
+        self.onChanged = onChanged
+        _currentRole = State(initialValue: user.userRole)
     }
 
     var body: some View {
-        Form {
-            Section("Member") {
-                LabeledContent("Name", value: user.displayName.isEmpty ? "No display name" : user.displayName)
-                LabeledContent("Email", value: user.email)
-                LabeledContent("Postal code", value: user.postalCode.isEmpty ? "Unknown" : user.postalCode)
-                LabeledContent("Community", value: user.community?.name ?? "Unknown")
-            }
-
-            Section("Activity") {
-                LabeledContent("Posts", value: "\(user.stats.totalPosts)")
-                LabeledContent("Responses sent", value: "\(user.stats.responsesSent)")
-                LabeledContent("Reports filed", value: "\(user.stats.reportsFiled)")
-            }
-
-            if appState.role.canManageAccess && !user.isSelf {
-                Section("Account status") {
-                    Picker("Status", selection: $selectedStatus) {
-                        ForEach([AccountStatus.active, .suspended, .banned], id: \.self) { status in
-                            Text(status.label).tag(status)
-                        }
+        List {
+            Section {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(Theme.accent.opacity(0.15)).frame(width: 56, height: 56)
+                        Text(initials(user.displayName)).font(.title3.bold()).foregroundStyle(Theme.accent)
                     }
-                    Button("Save status") {
-                        Task { await appState.updateStatus(for: user, status: selectedStatus) }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(user.displayName).font(.headline)
+                        if let email = user.email { Text(email).font(.caption).foregroundStyle(.secondary) }
+                        RoleBadge(role: currentRole)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+                if let created = user.createdAt {
+                    LabeledContent("Joined", value: relativeDate(created))
+                }
+            }
+
+            if canManage {
+                Section("Change role") {
+                    ForEach(UserRole.assignable) { role in
+                        Button {
+                            guard role != currentRole, !working else { return }
+                            Task { await changeRole(role) }
+                        } label: {
+                            HStack {
+                                Text(role.label).foregroundStyle(.primary)
+                                Spacer()
+                                if role == currentRole { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+                            }
+                        }
                     }
                 }
             }
 
-            if appState.role.canManageRoles && !user.isSelf {
-                Section("Role") {
-                    Picker("Role", selection: $selectedRole) {
-                        ForEach([StaffRole.member, .moderator, .admin, .superAdmin], id: \.self) { role in
-                            Text(role.label).tag(role)
-                        }
-                    }
-                    Button("Save role") {
-                        Task { await appState.updateRole(for: user, role: selectedRole) }
+            Section("Posts (\(posts.count))") {
+                if posts.isEmpty {
+                    Text("No posts").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(posts) { listing in
+                        NavigationLink { ListingDetailView(listing: listing) } label: { ListingCard(listing: listing) }
                     }
                 }
             }
         }
-        .navigationTitle("Member")
+        .navigationTitle(user.displayName)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if let p = await appState.load({ try await $0.fetchMyListings(ownerId: user.id) }) { posts = p }
+        }
+    }
+
+    private func changeRole(_ role: UserRole) async {
+        working = true
+        let ok = await appState.perform { try await $0.setUserRole(target: user.id, role: role.rawValue) }
+        working = false
+        if ok {
+            currentRole = role
+            appState.infoMessage = "Role updated to \(role.label)."
+            onChanged()
+        }
+    }
+}
+
+private func initials(_ name: String) -> String {
+    String(name.split(separator: " ").prefix(2).compactMap { $0.first }).uppercased()
+}
+
+private func colorForRole(_ role: UserRole) -> Color {
+    switch role {
+    case .admin, .owner: .red
+    case .moderator: .orange
+    case .sponsor: .blue
+    case .partner: .purple
+    case .user: .gray
     }
 }

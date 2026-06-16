@@ -1,196 +1,229 @@
 import Foundation
 import SwiftUI
 
+// =============================================================================
+// AppState — single source of truth for session, profile/role, and shared data.
+//
+// The app is open to everyone: browsing works signed-out, any signed-in member
+// can post / request / message, and staff (moderator/owner/admin) additionally
+// see the moderation tools. Privileges are surfaced by role and ENFORCED by
+// Supabase Row Level Security, never trusted from the client.
+// =============================================================================
+
 @MainActor
 final class AppState: ObservableObject {
     @Published private(set) var session: AuthSession?
-    @Published private(set) var me: MeResponse?
-    @Published private(set) var dashboard: AdminDashboard?
-    @Published private(set) var users: [AdminUser] = []
+    @Published private(set) var profile: Profile?
+    @Published private(set) var notifications: [AppNotification] = []
+    @Published private(set) var unreadCount = 0
+    @Published private(set) var perms: Set<String> = []
+    @Published private(set) var moderationCount = 0
+    @Published private(set) var reportsCount = 0
     @Published var isBusy = false
     @Published var alertMessage: String?
+    @Published var infoMessage: String?
 
-    private let sessionStore: SessionStoring
-    private let apiBaseURL = URL(string: "https://total-free-api.hurryupgo-b2d.workers.dev")!
+    private let store: SessionStoring
 
     init(sessionStore: SessionStoring = KeychainSessionStore()) {
-        self.sessionStore = sessionStore
+        self.store = sessionStore
         PushNotificationService.shared.configure(appState: self)
     }
 
-    var role: StaffRole {
-        me?.profile?.role ?? .member
-    }
+    // MARK: - Identity & privileges
 
-    var canUseAdminApp: Bool {
-        me?.profile?.status == .active && role.isStaff
-    }
+    var isAuthed: Bool { session?.accessToken.isEmpty == false }
+    var userId: String? { session?.user?.id }
+    var role: UserRole { profile?.userRole ?? .user }
+    var isStaff: Bool { role.isStaff }
+    var isOwner: Bool { role.isOwner }
+    var isVerified: Bool { session?.user?.isVerified ?? false }
 
-    var client: TotalFreeAPIClient {
-        TotalFreeAPIClient(baseURL: apiBaseURL, accessToken: session?.accessToken)
-    }
+    /// True if the person actually holds a permission (from my_perms()).
+    func can(_ key: String) -> Bool { perms.contains(key) }
+    /// Show the staff tab if the person holds any moderation/admin permission.
+    var canSeeStaffArea: Bool { Perm.staffArea.contains { perms.contains($0) } }
+    /// "Admin" for people who can manage users/roles; otherwise "Manage".
+    var staffAreaTitle: String { (can(Perm.userManage) || can(Perm.roleManage)) ? "Admin" : "Manage" }
+    var displayName: String { profile?.name ?? session?.user?.displayName ?? "Neighbour" }
+
+    // MARK: - Session lifecycle
 
     func restoreSession() async {
-        guard session == nil, let stored = sessionStore.load() else { return }
+        guard session == nil, let stored = store.load() else { return }
         session = stored
-        await loadMe()
-        if canUseAdminApp {
-            await refreshDashboard()
-            await enablePushNotifications()
-        }
+        await ensureFreshToken()
+        await loadProfile()
+        await afterAuth()
     }
 
     func signIn(email: String, password: String) async {
-        await run {
-            let login: AuthSession = try await TotalFreeAPIClient(baseURL: apiBaseURL)
-                .post("/api/auth/login", body: LoginRequest(email: email, password: password))
-            session = login
-            try sessionStore.save(login)
-            await loadMe()
-            guard canUseAdminApp else {
-                throw APIClientError.server("Admin access required for this app.")
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let s = try await SupabaseClient().signIn(email: email, password: password)
+            await applySession(s)
+        } catch {
+            alertMessage = message(for: error)
+        }
+    }
+
+    func signUp(name: String, email: String, password: String) async {
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            switch try await SupabaseClient().signUp(email: email, password: password, name: name) {
+            case .session(let s):
+                await applySession(s)
+            case .needsEmailVerification:
+                infoMessage = "Almost there — check your email to confirm your account, then sign in."
             }
-            await refreshDashboard()
-            await enablePushNotifications()
+        } catch {
+            alertMessage = message(for: error)
         }
     }
 
     func signOut() {
-        let signOutClient = client
-        if let token = PushNotificationService.shared.currentDeviceToken {
-            Task {
-                let _: EmptyResponse? = try? await signOutClient.delete("/api/push/devices/\(token)")
-            }
+        let token = PushNotificationService.shared.currentDeviceToken
+        if let uid = userId, let token {
+            let c = SupabaseClient(accessToken: session?.accessToken)
+            Task { try? await c.deleteDeviceToken(userId: uid, token: token) }
         }
-        sessionStore.clear()
+        let signOutClient = SupabaseClient(accessToken: session?.accessToken)
+        Task { await signOutClient.signOutRemote() }
+        store.clear()
         session = nil
-        me = nil
-        dashboard = nil
-        users = []
+        profile = nil
+        notifications = []
+        unreadCount = 0
+        perms = []
+        moderationCount = 0
+        reportsCount = 0
     }
 
-    func loadMe() async {
-        do {
-            me = try await client.get("/api/me")
-        } catch {
-            alertMessage = error.localizedDescription
-        }
+    private func applySession(_ s: AuthSession) async {
+        session = s
+        try? store.save(s)
+        await loadProfile()
+        await afterAuth()
     }
 
-    func refreshDashboard() async {
-        await run {
-            dashboard = try await client.get("/api/admin/dashboard")
-        }
-    }
-
-    func fetchPostDetail(id: String) async throws -> AdminPostDetail {
-        let response: AdminPostDetailResponse = try await client.get("/api/admin/posts/\(id)")
-        return response.item
-    }
-
-    func fetchReportDetail(id: String) async throws -> AdminReportDetailResponse {
-        try await client.get("/api/admin/reports/\(id)")
-    }
-
-    func approve(post: PendingPost) async {
-        await approvePost(id: post.id)
-    }
-
-    func approve(post: AdminPostDetail) async {
-        await approvePost(id: post.id)
-    }
-
-    func approvePost(id: String) async {
-        await run {
-            let _: EmptyResponse = try await client.post("/api/admin/posts/\(id)/approve", body: EmptyPayload())
-            await refreshDashboard()
-        }
-    }
-
-    func reject(post: PendingPost, reason: String) async {
-        await rejectPost(id: post.id, reason: reason)
-    }
-
-    func reject(post: AdminPostDetail, reason: String) async {
-        await rejectPost(id: post.id, reason: reason)
-    }
-
-    func rejectPost(id: String, reason: String) async {
-        await run {
-            let _: EmptyResponse = try await client.post("/api/admin/posts/\(id)/reject", body: RejectPostBody(reason: reason))
-            await refreshDashboard()
-        }
-    }
-
-    func resolve(report: SafetyReport, decision: String, reason: String? = nil) async {
-        await run {
-            let _: ReportMutationResponse = try await client.post("/api/admin/reports/\(report.id)/resolve", body: ResolveReportBody(decision: decision, reason: reason))
-            await refreshDashboard()
-        }
-    }
-
-    func loadUsers() async {
-        guard role.canManageAccess else { return }
-        await run {
-            let response: AdminUsersResponse = try await client.get("/api/admin/users")
-            users = response.users
-        }
-    }
-
-    func updateStatus(for user: AdminUser, status: AccountStatus) async {
-        await run {
-            let _: EmptyResponse = try await client.patch("/api/admin/users/\(user.id)/status", body: UserStatusBody(status: status.rawValue))
-            await loadUsers()
-        }
-    }
-
-    func updateRole(for user: AdminUser, role: StaffRole) async {
-        await run {
-            let _: EmptyResponse = try await client.patch("/api/admin/users/\(user.id)/role", body: UserRoleBody(role: role.rawValue))
-            await loadUsers()
-        }
-    }
-
-    func createInviteCode(code: String, label: String, maxUses: Int) async {
-        await run {
-            let _: InviteCodeResponse = try await client.post("/api/admin/invite-codes", body: InviteCodeBody(code: code, label: label, maxUses: maxUses))
-            await refreshDashboard()
-        }
-    }
-
-    func registerPushDeviceToken(_ token: String) async {
-        guard canUseAdminApp else { return }
-        do {
-            let _: EmptyResponse = try await client.post(
-                "/api/push/devices",
-                body: PushDeviceRegistrationBody(deviceToken: token)
-            )
-        } catch {
-            alertMessage = "Push notifications could not be enabled: \(error.localizedDescription)"
-        }
-    }
-
-    func recordPushRegistrationFailure(_ message: String) {
-        alertMessage = "Push notifications could not be enabled: \(message)"
-    }
-
-    private func enablePushNotifications() async {
+    private func afterAuth() async {
+        await loadPerms()
+        await refreshNotifications()
+        await refreshStaffCounts()
         await PushNotificationService.shared.requestAuthorizationAndRegister()
         await PushNotificationService.shared.registerStoredTokenIfAvailable()
     }
 
-    private func run(_ operation: () async throws -> Void) async {
-        isBusy = true
-        defer { isBusy = false }
-        do {
-            try await operation()
-        } catch APIClientError.unauthorized {
-            signOut()
-            alertMessage = "Please sign in again."
-        } catch {
-            alertMessage = error.localizedDescription
+    func loadProfile() async {
+        guard let uid = userId else { profile = nil; return }
+        profile = try? await client().fetchProfile(userId: uid)
+    }
+
+    func loadPerms() async {
+        guard isAuthed else { perms = []; return }
+        if let keys = try? await client().fetchMyPerms() { perms = Set(keys) }
+    }
+
+    /// Total count shown on the staff tab badge.
+    var staffBadgeCount: Int { moderationCount + reportsCount }
+
+    func refreshStaffCounts() async {
+        guard isAuthed else { moderationCount = 0; reportsCount = 0; return }
+        moderationCount = can(Perm.listingReview) ? ((try? await client().countPendingListings()) ?? moderationCount) : 0
+        reportsCount = can(Perm.reportResolve) ? ((try? await client().countOpenReports()) ?? reportsCount) : 0
+    }
+
+    // MARK: - Notifications
+
+    func refreshNotifications() async {
+        guard let uid = userId else { return }
+        if let list = try? await client().fetchNotifications(userId: uid) {
+            notifications = list
+            unreadCount = list.filter { !$0.read }.count
         }
     }
-}
 
-struct EmptyPayload: Encodable {}
+    func markNotificationRead(_ id: String) async {
+        await perform { try await $0.markNotificationRead(id: id) }
+        await refreshNotifications()
+    }
+
+    func markAllNotificationsRead() async {
+        guard let uid = userId else { return }
+        await perform { try await $0.markAllNotificationsRead(userId: uid) }
+        await refreshNotifications()
+    }
+
+    // MARK: - Push registration callbacks
+
+    func registerPushDeviceToken(_ token: String) async {
+        guard let uid = userId else { return }
+        try? await client().registerDeviceToken(userId: uid, token: token)
+    }
+
+    func recordPushRegistrationFailure(_ message: String) {
+        // Non-fatal: the in-app notification feed still works without APNs.
+        #if DEBUG
+        print("[Push] registration failed: \(message)")
+        #endif
+    }
+
+    // MARK: - Networking helpers (token refresh + uniform error handling)
+
+    /// Returns a client carrying a fresh access token (refreshing if near expiry).
+    func client() async -> SupabaseClient {
+        await ensureFreshToken()
+        return SupabaseClient(accessToken: session?.accessToken)
+    }
+
+    /// Run a read, surfacing errors centrally. Returns nil on failure.
+    func load<T>(_ op: (SupabaseClient) async throws -> T) async -> T? {
+        do {
+            return try await op(client())
+        } catch let error {
+            await handle(error)
+            return nil
+        }
+    }
+
+    /// Run a mutation, surfacing errors centrally. Returns true on success.
+    @discardableResult
+    func perform(_ op: (SupabaseClient) async throws -> Void) async -> Bool {
+        do {
+            try await op(client())
+            return true
+        } catch let error {
+            await handle(error)
+            return false
+        }
+    }
+
+    private func handle(_ error: Error) async {
+        if case SupabaseError.unauthorized = error {
+            alertMessage = "Your session expired. Please sign in again."
+            signOut()
+        } else {
+            alertMessage = message(for: error)
+        }
+    }
+
+    private func ensureFreshToken() async {
+        guard let s = session, let exp = s.expiresAt else { return }
+        if Date().timeIntervalSince1970 < exp - 60 { return }
+        do {
+            let refreshed = try await SupabaseClient().refresh(refreshToken: s.refreshToken)
+            session = refreshed
+            try? store.save(refreshed)
+        } catch {
+            store.clear()
+            session = nil
+            profile = nil
+        }
+    }
+
+    private func message(for error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+}

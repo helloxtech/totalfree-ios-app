@@ -1,465 +1,429 @@
 import Foundation
 
-enum StaffRole: String, Codable, CaseIterable, Identifiable {
-    case member
-    case moderator
-    case admin
-    case superAdmin = "super_admin"
-    case profileMissing = "profile_missing"
-    case unknown
+// =============================================================================
+// Codable models for the TotalFree Supabase schema.
+//
+// Server responses are decoded with `.convertFromSnakeCase`, so DB columns like
+// `owner_id` / `image_url` arrive as `ownerId` / `imageUrl`. Insert + RPC bodies
+// use explicit snake_case property names so they serialize to the exact column /
+// argument names PostgREST expects.
+// =============================================================================
 
+// MARK: - Roles
+
+enum UserRole: String, CaseIterable, Identifiable {
+    case user, partner, sponsor, moderator, owner, admin
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .member: "Member"
+        case .user: "Member"
+        case .partner: "Organization"
+        case .sponsor: "Business"
         case .moderator: "Moderator"
+        case .owner: "Owner"
         case .admin: "Admin"
-        case .superAdmin: "Super admin"
-        case .profileMissing: "No profile"
-        case .unknown: "Unknown"
         }
     }
 
-    var isStaff: Bool {
-        self == .moderator || self == .admin || self == .superAdmin
-    }
-
-    var canManageAccess: Bool {
-        self == .admin || self == .superAdmin
-    }
-
-    var canManageRoles: Bool {
-        self == .superAdmin
-    }
-
-    init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer().decode(String.self)
-        self = StaffRole(rawValue: value) ?? .unknown
-    }
+    /// Staff = anyone who can moderate (mirrors the web app's `isStaff`).
+    var isStaff: Bool { self == .admin || self == .owner || self == .moderator }
+    /// Owner-level = full control incl. user role management.
+    var isOwner: Bool { self == .admin || self == .owner }
+    /// Roles an Owner is allowed to assign from the app.
+    static var assignable: [UserRole] { [.user, .partner, .sponsor, .moderator, .owner, .admin] }
 }
 
-enum AccountStatus: String, Codable, CaseIterable, Identifiable {
-    case pending
-    case active
-    case suspended
-    case banned
-    case profileMissing = "profile_missing"
-    case unknown
+// MARK: - Auth (Supabase GoTrue)
 
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .pending: "Pending"
-        case .active: "Active"
-        case .suspended: "Suspended"
-        case .banned: "Banned"
-        case .profileMissing: "No profile"
-        case .unknown: "Unknown"
-        }
-    }
-
-    init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer().decode(String.self)
-        self = AccountStatus(rawValue: value) ?? .unknown
-    }
-}
-
-enum PostStatus: String, Codable, Identifiable {
-    case draft
-    case pendingReview = "pending_review"
-    case active
-    case reserved
-    case completed
-    case closed
-    case rejected
-    case hidden
-    case unknown
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .draft: "Draft"
-        case .pendingReview: "Pending review"
-        case .active: "Available"
-        case .reserved: "Connected"
-        case .completed: "Completed"
-        case .closed: "Closed"
-        case .rejected: "Needs changes"
-        case .hidden: "Hidden"
-        case .unknown: "Unknown"
-        }
-    }
-
-    init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer().decode(String.self)
-        self = PostStatus(rawValue: value) ?? .unknown
-    }
-}
-
-enum ReportStatus: String, Codable, Identifiable {
-    case open
-    case reviewing
-    case resolved
-    case dismissed
-    case unknown
-
-    var id: String { rawValue }
-
-    init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer().decode(String.self)
-        self = ReportStatus(rawValue: value) ?? .unknown
-    }
-}
-
-enum ReportSeverity: String, Codable {
-    case normal
-    case urgent
-    case unknown
-
-    init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer().decode(String.self)
-        self = ReportSeverity(rawValue: value) ?? .unknown
-    }
-}
-
-struct AuthSession: Codable {
-    let accessToken: String
-    let refreshToken: String?
-    let expiresIn: Int?
-    let expiresAt: Int?
-    let tokenType: String?
-
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case refreshToken = "refresh_token"
-        case expiresIn = "expires_in"
-        case expiresAt = "expires_at"
-        case tokenType = "token_type"
-    }
-}
-
-struct LoginRequest: Encodable {
-    let email: String
-    let password: String
-}
-
-struct MeResponse: Decodable {
-    let user: AppUser?
-    let profile: Profile?
-    let notifications: [NotificationItem]
-}
-
-struct AppUser: Decodable, Identifiable {
+struct AuthUser: Codable, Equatable {
     let id: String
     let email: String?
-}
+    let emailConfirmedAt: String?
+    let confirmedAt: String?
+    let userMetadata: [String: String]?
 
-struct Profile: Decodable {
-    let userId: String
-    let displayName: String
-    let postalCode: String?
-    let role: StaffRole
-    let status: AccountStatus
+    var isVerified: Bool { (emailConfirmedAt?.isEmpty == false) || (confirmedAt?.isEmpty == false) }
+    var displayName: String { userMetadata?["name"] ?? email ?? "Neighbour" }
 
     enum CodingKeys: String, CodingKey {
-        case userId = "user_id"
-        case displayName = "display_name"
-        case postalCode = "postal_code"
-        case role
-        case status
+        case id, email, emailConfirmedAt, confirmedAt, userMetadata
+    }
+
+    // user_metadata values can be non-strings; decode leniently to [String:String].
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        email = try c.decodeIfPresent(String.self, forKey: .email)
+        emailConfirmedAt = try c.decodeIfPresent(String.self, forKey: .emailConfirmedAt)
+        confirmedAt = try c.decodeIfPresent(String.self, forKey: .confirmedAt)
+        if let raw = try? c.decodeIfPresent([String: JSONValue].self, forKey: .userMetadata) {
+            userMetadata = raw.compactMapValues { $0.stringValue }
+        } else {
+            userMetadata = nil
+        }
     }
 }
 
-struct NotificationItem: Decodable, Identifiable {
+/// Stored in the Keychain. Parsed from GoTrue token responses, then persisted /
+/// reloaded with a plain coder (so the round trip stays camelCase-consistent).
+struct AuthSession: Codable, Equatable {
+    let accessToken: String
+    let refreshToken: String
+    let expiresAt: Double?
+    let tokenType: String?
+    let user: AuthUser?
+}
+
+/// Sign-up either returns a usable session (auto-confirm) or nothing until the
+/// person confirms their email.
+enum SignUpOutcome {
+    case session(AuthSession)
+    case needsEmailVerification
+}
+
+// MARK: - Profile
+
+struct Profile: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let role: String
+    let phoneVerified: Bool?
+    let avatarUrl: String?
+
+    var userRole: UserRole { UserRole(rawValue: role) ?? .user }
+}
+
+// MARK: - Listings
+
+struct OwnerRef: Codable, Equatable { let id: String?; let name: String? }
+struct SponsorRef: Codable, Equatable { let id: String?; let businessName: String?; let website: String?; let status: String? }
+struct PartnerRef: Codable, Equatable { let id: String?; let name: String?; let website: String? }
+
+struct Listing: Codable, Identifiable, Equatable {
+    let id: String
+    let ownerId: String?
+    let title: String
+    let description: String
+    let category: String
+    let sourceType: String
+    let listingKind: String
+    let condition: String?
+    let quantity: Int?
+    let neededBy: String?
+    let city: String?
+    let area: String?
+    let imageUrl: String?
+    let imageUrls: [String]?
+    let externalUrl: String?
+    let sourceLabel: String?
+    let status: String
+    let createdAt: String?
+    let byDonation: Bool?
+    let publicId: Int?
+    let sponsors: SponsorRef?
+    let partners: PartnerRef?
+    let profiles: OwnerRef?
+
+    var kind: String { listingKind }
+    var isWanted: Bool { listingKind == "wanted" }
+    var ownerName: String? { profiles?.name }
+
+    /// WHO is behind the listing, resolved like the web normalizer.
+    var sourceLabelText: String {
+        sourceLabel ?? sponsors?.businessName ?? partners?.name ?? AppConstants.sourceLabel(sourceType)
+    }
+
+    var locationText: String {
+        [area, city].compactMap { ($0?.isEmpty == false) ? $0 : nil }.first ?? "Metro Vancouver"
+    }
+
+    var categoryLabel: String { AppConstants.categoryLabel(category) }
+    var conditionLabel: String? { AppConstants.conditionLabel(condition) }
+
+    /// All photos to show (cover first); falls back to the single image_url.
+    var galleryUrls: [String] {
+        if let imageUrls, !imageUrls.isEmpty { return imageUrls }
+        if let imageUrl, !imageUrl.isEmpty { return [imageUrl] }
+        return []
+    }
+}
+
+// MARK: - Requests + messages
+
+struct ListingRef: Codable, Equatable { let title: String? }
+
+struct AppRequest: Codable, Identifiable, Equatable {
+    let id: String
+    let listingId: String
+    let requesterId: String
+    let ownerId: String?
+    let message: String
+    let status: String
+    let createdAt: String?
+    let updatedAt: String?
+    let listings: ListingRef?
+
+    var itemTitle: String { listings?.title ?? "a listing" }
+}
+
+struct Message: Codable, Identifiable, Equatable {
+    let id: String
+    let requestId: String
+    let senderId: String
+    let text: String
+    let createdAt: String?
+}
+
+// MARK: - Reports
+
+struct Report: Codable, Identifiable, Equatable {
+    let id: String
+    let targetId: String
+    let targetType: String
+    let reason: String
+    let description: String?
+    let reporterId: String?
+    let status: String
+    let createdAt: String?
+    let reviewedAt: String?
+    let reporter: OwnerRef?
+}
+
+/// A report plus the resolved listing title (enriched client-side, since the
+/// polymorphic target has no foreign key to embed).
+struct ReportRow: Identifiable, Equatable {
+    let report: Report
+    let listingTitle: String?
+    var id: String { report.id }
+}
+
+// MARK: - Notifications
+
+struct AppNotification: Codable, Identifiable, Equatable {
     let id: String
     let type: String
     let title: String
     let body: String?
     let link: String?
-    let readAt: String?
+    let read: Bool
     let createdAt: String?
+    let data: NotificationData?
 
-    enum CodingKeys: String, CodingKey {
-        case id
-        case type
-        case title
-        case body
-        case link
-        case readAt = "read_at"
-        case createdAt = "created_at"
+    var targetListingId: String? { data?.listingId }
+    var targetRequestId: String? { data?.requestId }
+
+    var icon: String {
+        switch type {
+        case "request_new": "hands.sparkles"
+        case "request_update": "arrow.triangle.2.circlepath"
+        case "message_new": "bubble.left.and.bubble.right"
+        case "listing_approved": "checkmark.seal"
+        case "sponsor_approved": "building.2"
+        case "match_found": "sparkles"
+        default: "bell"
+        }
     }
 }
 
-struct AdminDashboard: Decodable {
-    let stats: AdminStats
-    let pendingPosts: [PendingPost]
-    let reports: [SafetyReport]
-    let inviteCodes: [InviteCode]
+/// The `data` jsonb on a notification (keys are already camelCase in the DB triggers).
+struct NotificationData: Codable, Equatable {
+    let listingId: String?
+    let requestId: String?
+    let sponsorId: String?
 }
 
-struct AdminStats: Decodable {
-    let totalPosts: Int
-    let draftPosts: Int
-    let activePosts: Int
-    let pendingPosts: Int
-    let reservedPosts: Int
-    let completedPosts: Int
-    let closedPosts: Int
-    let rejectedPosts: Int
-    let hiddenPosts: Int
-    let openReports: Int
-    let members: Int
-    let viewsToday: Int
-    let uniqueVisitorsToday: Int
-    let signedInVisitorsToday: Int
-    let signInsToday: Int
-    let views7d: Int
-    let uniqueVisitors7d: Int
-    let signedInVisitors7d: Int
-    let signIns7d: Int
-    let postStatusCounts: [String: Int]
+// MARK: - Admin users (from admin_list_users RPC)
 
-    enum CodingKeys: String, CodingKey {
-        case totalPosts
-        case draftPosts
-        case activePosts
-        case pendingPosts
-        case reservedPosts
-        case completedPosts
-        case closedPosts
-        case rejectedPosts
-        case hiddenPosts
-        case openReports
-        case members
-        case viewsToday
-        case uniqueVisitorsToday
-        case signedInVisitorsToday
-        case signInsToday
-        case views7d
-        case uniqueVisitors7d
-        case signedInVisitors7d
-        case signIns7d
-        case postStatusCounts
+struct AdminUserRow: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String?
+    let role: String?
+    let email: String?
+    let createdAt: String?
+
+    var userRole: UserRole { UserRole(rawValue: role ?? "user") ?? .user }
+    var displayName: String { (name?.isEmpty == false ? name : nil) ?? email ?? "Neighbour" }
+}
+
+// MARK: - Permissions (keys from public.permissions; gated by my_perms())
+
+enum Perm {
+    static let listingEditOwn = "listing.edit.own"
+    static let listingDeleteOwn = "listing.delete.own"
+    static let listingReview = "listing.review"
+    static let listingEditAny = "listing.edit.any"
+    static let listingDeleteAny = "listing.delete.any"
+    static let reportResolve = "report.resolve"
+    static let claimResolve = "claim.resolve"
+    static let businessApprove = "business.approve"
+    static let messageReadAny = "message.read.any"
+    static let analyticsView = "analytics.view"
+    static let userView = "user.view"
+    static let userManage = "user.manage"
+    static let teamManage = "team.manage"
+    static let roleManage = "role.manage"
+
+    /// Any of these means the person should see the staff area.
+    static let staffArea: [String] = [
+        listingReview, listingEditAny, listingDeleteAny, reportResolve, claimResolve,
+        businessApprove, messageReadAny, analyticsView, userView, userManage, teamManage, roleManage,
+    ]
+}
+
+// MARK: - Sponsors / claims / scanner candidates (staff surfaces)
+
+struct Sponsor: Codable, Identifiable, Equatable {
+    let id: String
+    let ownerId: String?
+    let businessName: String
+    let description: String?
+    let website: String?
+    let logoUrl: String?
+    let status: String
+    let createdAt: String?
+}
+
+struct OrgClaim: Codable, Identifiable, Equatable {
+    let id: String
+    let userId: String
+    let listingId: String?
+    let orgName: String?
+    let website: String?
+    let kind: String
+    let note: String?
+    let status: String
+    let createdAt: String?
+    let listings: ListingRef?
+    let profiles: OwnerRef?
+
+    var who: String { profiles?.name ?? "A member" }
+    var what: String { orgName ?? listings?.title ?? website ?? "an organization" }
+}
+
+struct CandidatePayload: Codable, Equatable {
+    let title: String?
+    let city: String?
+    let area: String?
+    let category: String?
+    let description: String?
+    let externalUrl: String?
+    let url: String?
+    var link: String? { externalUrl ?? url }
+}
+
+struct ScanCandidate: Codable, Identifiable, Equatable {
+    let id: String
+    let agent: String?
+    let sourceDomain: String?
+    let evidenceQuote: String?
+    let status: String
+    let confidence: Double?
+    let createdAt: String?
+    let payload: CandidatePayload?
+
+    var title: String { payload?.title ?? "(untitled find)" }
+    var confidencePct: String? { confidence.map { "\(Int(($0 * 100).rounded()))%" } }
+}
+
+// MARK: - Insert / update / RPC bodies (snake_case = column/argument names)
+
+struct ListingInsert: Encodable {
+    let owner_id: String
+    let title: String
+    let description: String
+    let category: String
+    let source_type: String
+    let listing_kind: String
+    let condition: String?
+    let quantity: Int?
+    let needed_by: String?
+    let city: String?
+    let area: String?
+    let image_url: String?
+    let image_urls: [String]?
+    let lat: Double?
+    let lng: Double?
+    let status: String
+}
+
+struct RequestInsert: Encodable {
+    let listing_id: String
+    let owner_id: String?
+    let requester_id: String
+    let message: String
+}
+
+struct MessageInsert: Encodable {
+    let request_id: String
+    let sender_id: String
+    let text: String
+}
+
+struct DeviceTokenInsert: Encodable {
+    let user_id: String
+    let device_token: String
+    let platform: String
+}
+
+struct RequestStatusUpdate: Encodable { let status: String }
+struct ReportResolveUpdate: Encodable { let status: String; let reviewed_at: String }
+struct NotificationReadUpdate: Encodable { let read: Bool }
+struct ProfileNameUpdate: Encodable { let name: String }
+
+struct ModerateListingParams: Encodable { let p_id: String; let p_status: String }
+struct SetUserRoleParams: Encodable { let target: String; let new_role: String }
+struct ReportListingParams: Encodable { let p_listing: String; let p_reason: String; let p_note: String? }
+struct CandidatesParams: Encodable { let p_status: String }
+struct ReviewCandidateParams: Encodable { let p_candidate: String; let p_approve: Bool; let p_reason: String? }
+struct ResolveClaimParams: Encodable { let p_claim: String; let p_approve: Bool }
+struct SponsorStatusUpdate: Encodable { let status: String }
+struct ListingEditUpdate: Encodable { let title: String; let description: String; let category: String; let condition: String? }
+struct ListingResubmitUpdate: Encodable { let title: String; let description: String; let category: String; let condition: String?; let status: String }
+struct ListingStatusUpdate: Encodable { let status: String }
+
+struct PasswordGrantBody: Encodable { let email: String; let password: String }
+struct RefreshTokenBody: Encodable { let refresh_token: String }
+struct SignUpBody: Encodable { let email: String; let password: String; let data: [String: String] }
+
+// MARK: - Lightweight JSON value (for user_metadata decoding)
+
+enum JSONValue: Codable {
+    case string(String), int(Int), double(Double), bool(Bool), null
+    case object([String: JSONValue]), array([JSONValue])
+
+    var stringValue: String? {
+        switch self {
+        case .string(let s): s
+        case .int(let i): String(i)
+        case .double(let d): String(d)
+        case .bool(let b): String(b)
+        default: nil
+        }
     }
 
     init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        totalPosts = try values.decodeIfPresent(Int.self, forKey: .totalPosts) ?? 0
-        draftPosts = try values.decodeIfPresent(Int.self, forKey: .draftPosts) ?? 0
-        activePosts = try values.decodeIfPresent(Int.self, forKey: .activePosts) ?? 0
-        pendingPosts = try values.decodeIfPresent(Int.self, forKey: .pendingPosts) ?? 0
-        reservedPosts = try values.decodeIfPresent(Int.self, forKey: .reservedPosts) ?? 0
-        completedPosts = try values.decodeIfPresent(Int.self, forKey: .completedPosts) ?? 0
-        closedPosts = try values.decodeIfPresent(Int.self, forKey: .closedPosts) ?? 0
-        rejectedPosts = try values.decodeIfPresent(Int.self, forKey: .rejectedPosts) ?? 0
-        hiddenPosts = try values.decodeIfPresent(Int.self, forKey: .hiddenPosts) ?? 0
-        openReports = try values.decodeIfPresent(Int.self, forKey: .openReports) ?? 0
-        members = try values.decodeIfPresent(Int.self, forKey: .members) ?? 0
-        viewsToday = try values.decodeIfPresent(Int.self, forKey: .viewsToday) ?? 0
-        uniqueVisitorsToday = try values.decodeIfPresent(Int.self, forKey: .uniqueVisitorsToday) ?? 0
-        signedInVisitorsToday = try values.decodeIfPresent(Int.self, forKey: .signedInVisitorsToday) ?? 0
-        signInsToday = try values.decodeIfPresent(Int.self, forKey: .signInsToday) ?? 0
-        views7d = try values.decodeIfPresent(Int.self, forKey: .views7d) ?? 0
-        uniqueVisitors7d = try values.decodeIfPresent(Int.self, forKey: .uniqueVisitors7d) ?? 0
-        signedInVisitors7d = try values.decodeIfPresent(Int.self, forKey: .signedInVisitors7d) ?? 0
-        signIns7d = try values.decodeIfPresent(Int.self, forKey: .signIns7d) ?? 0
-        postStatusCounts = try values.decodeIfPresent([String: Int].self, forKey: .postStatusCounts) ?? [:]
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null }
+        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
+        else if let v = try? c.decode(Int.self) { self = .int(v) }
+        else if let v = try? c.decode(Double.self) { self = .double(v) }
+        else if let v = try? c.decode(String.self) { self = .string(v) }
+        else if let v = try? c.decode([String: JSONValue].self) { self = .object(v) }
+        else if let v = try? c.decode([JSONValue].self) { self = .array(v) }
+        else { self = .null }
     }
-}
 
-struct PendingPost: Decodable, Identifiable {
-    let id: String
-    let postType: String
-    let title: String
-    let description: String
-    let category: String
-    let condition: String
-    let pickupArea: String
-    let postalCode: String?
-    let createdAt: String
-    let owner: PostOwner
-    let photos: [PostPhoto]
-
-    var typeLabel: String { postType == "request" ? "Request" : "Offer" }
-}
-
-struct PostOwner: Decodable {
-    let id: String
-    let displayName: String
-}
-
-struct PostPhoto: Decodable, Identifiable {
-    let id: String
-    let status: String?
-    let url: String?
-}
-
-struct AdminPostDetailResponse: Decodable {
-    let item: AdminPostDetail
-}
-
-struct AdminPostDetail: Decodable, Identifiable {
-    let id: String
-    let postType: String
-    let title: String
-    let description: String
-    let category: String
-    let condition: String
-    let pickupArea: String
-    let postalCode: String?
-    let pickupMethod: String?
-    let availabilityWindow: String?
-    let safetyNote: String?
-    let status: PostStatus
-    let moderationReason: String?
-    let createdAt: String
-    let updatedAt: String?
-    let owner: AdminProfileSummary
-    let photos: [PostPhoto]
-
-    var typeLabel: String { postType == "request" ? "Request" : "Offer" }
-}
-
-struct AdminReportDetailResponse: Decodable {
-    let report: SafetyReport
-    let reporter: AdminProfileSummary?
-    let targetPost: AdminPostDetail?
-}
-
-struct AdminProfileSummary: Decodable, Identifiable {
-    let id: String
-    let displayName: String
-    let role: StaffRole?
-    let status: AccountStatus?
-    let postalCode: String?
-}
-
-struct SafetyReport: Decodable, Identifiable {
-    let id: String
-    let reporterId: String?
-    let targetType: String
-    let targetId: String
-    let reason: String
-    let details: String?
-    let severity: ReportSeverity
-    let status: ReportStatus
-    let snapshot: ReportSnapshot?
-    let createdAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case reporterId = "reporter_id"
-        case targetType = "target_type"
-        case targetId = "target_id"
-        case reason
-        case details
-        case severity
-        case status
-        case snapshot
-        case createdAt = "created_at"
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .string(let v): try c.encode(v)
+        case .int(let v): try c.encode(v)
+        case .double(let v): try c.encode(v)
+        case .bool(let v): try c.encode(v)
+        case .object(let v): try c.encode(v)
+        case .array(let v): try c.encode(v)
+        case .null: try c.encodeNil()
+        }
     }
-}
-
-struct ReportSnapshot: Decodable {
-    let post: ReportPostSnapshot?
-    let message: ReportMessageSnapshot?
-}
-
-struct ReportPostSnapshot: Decodable {
-    let title: String?
-    let description: String?
-    let status: PostStatus?
-
-    enum CodingKeys: String, CodingKey {
-        case title
-        case description
-        case status
-    }
-}
-
-struct ReportMessageSnapshot: Decodable {
-    let body: String?
-}
-
-struct InviteCode: Decodable, Identifiable {
-    let id: String
-    let code: String
-    let label: String?
-    let status: String
-    let maxUses: Int
-    let usedCount: Int
-    let expiresAt: String?
-    let community: CommunitySummary?
-}
-
-struct CommunitySummary: Decodable {
-    let id: String
-    let name: String
-    let slug: String?
-}
-
-struct AdminUsersResponse: Decodable {
-    let viewer: AdminViewer
-    let users: [AdminUser]
-}
-
-struct AdminViewer: Decodable {
-    let id: String
-    let role: StaffRole
-    let permissions: AdminPermissions
-}
-
-struct AdminPermissions: Decodable {
-    let canReview: Bool
-    let canManageAccess: Bool
-    let canManageRoles: Bool
-}
-
-struct AdminUser: Decodable, Identifiable {
-    let id: String
-    let email: String
-    let displayName: String
-    let role: StaffRole
-    let status: AccountStatus
-    let hasProfile: Bool
-    let postalCode: String
-    let community: CommunitySummary?
-    let createdAt: String?
-    let updatedAt: String?
-    let lastSeenAt: String?
-    let emailConfirmedAt: String?
-    let isSelf: Bool
-    let stats: UserStats
-}
-
-struct UserStats: Decodable {
-    let totalPosts: Int
-    let activePosts: Int
-    let pendingPosts: Int
-    let completedPosts: Int
-    let responsesSent: Int
-    let acceptedResponses: Int
-    let reportsFiled: Int
-    let openReportsFiled: Int
-}
-
-struct EmptyResponse: Decodable {}
-
-struct ModeratePostResponse: Decodable {
-    let item: PendingPost?
-}
-
-struct ReportMutationResponse: Decodable {
-    let report: SafetyReport?
-}
-
-struct InviteCodeResponse: Decodable {
-    let code: InviteCode
-}
-
-struct APIErrorBody: Decodable {
-    let error: String
 }

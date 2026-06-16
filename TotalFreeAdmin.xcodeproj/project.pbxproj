@@ -20,6 +20,22 @@
 		AA0000010000000000000011 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000011 /* Components.swift */; };
 		AA0000010000000000000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000012 /* Assets.xcassets */; };
 		AA0000010000000000000013 /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000015 /* PushNotificationService.swift */; };
+		AA0000010000000000000017 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000017 /* SupabaseConfig.swift */; };
+		AA0000010000000000000018 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000018 /* API.swift */; };
+		AA0000010000000000000019 /* BrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000019 /* BrowseView.swift */; };
+		AA0000010000000000000020 /* ListingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000020 /* ListingDetailView.swift */; };
+		AA0000010000000000000021 /* PostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000021 /* PostView.swift */; };
+		AA0000010000000000000022 /* MyStuffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000022 /* MyStuffView.swift */; };
+		AA0000010000000000000023 /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000023 /* NotificationsView.swift */; };
+		AA0000010000000000000024 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000024 /* AccountView.swift */; };
+		AA0000010000000000000025 /* CandidatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000025 /* CandidatesView.swift */; };
+		AA0000010000000000000026 /* ClaimsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000026 /* ClaimsView.swift */; };
+		AA0000010000000000000027 /* SponsorsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000027 /* SponsorsView.swift */; };
+		AA0000010000000000000028 /* ConversationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000028 /* ConversationsView.swift */; };
+		AA0000010000000000000029 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000029 /* AnalyticsView.swift */; };
+		AA0000010000000000000030 /* EditListingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000030 /* EditListingView.swift */; };
+		AA0000010000000000000031 /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000031 /* LocationPickerView.swift */; };
+		AA0000010000000000000032 /* Loaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000032 /* Loaders.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +55,22 @@
 		AA0000020000000000000014 /* TotalFreeAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TotalFreeAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000020000000000000015 /* PushNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationService.swift; sourceTree = "<group>"; };
 		AA0000020000000000000016 /* TotalFreeAdmin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TotalFreeAdmin.entitlements; sourceTree = "<group>"; };
+		AA0000020000000000000017 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
+		AA0000020000000000000018 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
+		AA0000020000000000000019 /* BrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000020 /* ListingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListingDetailView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000021 /* PostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000022 /* MyStuffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyStuffView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000023 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000024 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000025 /* CandidatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidatesView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000026 /* ClaimsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaimsView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000027 /* SponsorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SponsorsView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000028 /* ConversationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationsView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000029 /* AnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000030 /* EditListingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditListingView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000031 /* LocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPickerView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000032 /* Loaders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Loaders.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -94,8 +126,10 @@
 		AA0000040000000000000005 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				AA0000020000000000000017 /* SupabaseConfig.swift */,
 				AA0000020000000000000004 /* KeychainSessionStore.swift */,
 				AA0000020000000000000005 /* TotalFreeAPIClient.swift */,
+				AA0000020000000000000018 /* API.swift */,
 				AA0000020000000000000015 /* PushNotificationService.swift */,
 			);
 			path = Services;
@@ -105,10 +139,24 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000006 /* RootView.swift */,
+				AA0000020000000000000010 /* AccessView.swift */,
+				AA0000020000000000000019 /* BrowseView.swift */,
+				AA0000020000000000000020 /* ListingDetailView.swift */,
+				AA0000020000000000000021 /* PostView.swift */,
+				AA0000020000000000000022 /* MyStuffView.swift */,
+				AA0000020000000000000023 /* NotificationsView.swift */,
+				AA0000020000000000000024 /* AccountView.swift */,
+				AA0000020000000000000025 /* CandidatesView.swift */,
+				AA0000020000000000000026 /* ClaimsView.swift */,
+				AA0000020000000000000027 /* SponsorsView.swift */,
+				AA0000020000000000000028 /* ConversationsView.swift */,
+				AA0000020000000000000029 /* AnalyticsView.swift */,
+				AA0000020000000000000030 /* EditListingView.swift */,
+				AA0000020000000000000031 /* LocationPickerView.swift */,
+				AA0000020000000000000032 /* Loaders.swift */,
 				AA0000020000000000000007 /* QueueViews.swift */,
 				AA0000020000000000000008 /* ReportsView.swift */,
 				AA0000020000000000000009 /* MembersView.swift */,
-				AA0000020000000000000010 /* AccessView.swift */,
 				AA0000020000000000000011 /* Components.swift */,
 			);
 			path = Views;
@@ -204,11 +252,27 @@
 				AA0000010000000000000004 /* KeychainSessionStore.swift in Sources */,
 				AA0000010000000000000005 /* TotalFreeAPIClient.swift in Sources */,
 				AA0000010000000000000013 /* PushNotificationService.swift in Sources */,
+				AA0000010000000000000017 /* SupabaseConfig.swift in Sources */,
+				AA0000010000000000000018 /* API.swift in Sources */,
 				AA0000010000000000000006 /* RootView.swift in Sources */,
+				AA0000010000000000000010 /* AccessView.swift in Sources */,
+				AA0000010000000000000019 /* BrowseView.swift in Sources */,
+				AA0000010000000000000020 /* ListingDetailView.swift in Sources */,
+				AA0000010000000000000021 /* PostView.swift in Sources */,
+				AA0000010000000000000022 /* MyStuffView.swift in Sources */,
+				AA0000010000000000000023 /* NotificationsView.swift in Sources */,
+				AA0000010000000000000024 /* AccountView.swift in Sources */,
+				AA0000010000000000000025 /* CandidatesView.swift in Sources */,
+				AA0000010000000000000026 /* ClaimsView.swift in Sources */,
+				AA0000010000000000000027 /* SponsorsView.swift in Sources */,
+				AA0000010000000000000028 /* ConversationsView.swift in Sources */,
+				AA0000010000000000000029 /* AnalyticsView.swift in Sources */,
+				AA0000010000000000000030 /* EditListingView.swift in Sources */,
+				AA0000010000000000000031 /* LocationPickerView.swift in Sources */,
+				AA0000010000000000000032 /* Loaders.swift in Sources */,
 				AA0000010000000000000007 /* QueueViews.swift in Sources */,
 				AA0000010000000000000008 /* ReportsView.swift in Sources */,
 				AA0000010000000000000009 /* MembersView.swift in Sources */,
-				AA0000010000000000000010 /* AccessView.swift in Sources */,
 				AA0000010000000000000011 /* Components.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

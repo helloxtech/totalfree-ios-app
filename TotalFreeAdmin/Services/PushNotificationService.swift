@@ -1,11 +1,15 @@
 import UIKit
 import UserNotifications
 
+// Registers the device's APNs token in the Supabase `device_tokens` table after
+// sign-in. The `send-push` edge function reads that table (platform = 'ios') and
+// delivers notifications using `ca.totalfree.admin` as the apns-topic, so the
+// app bundle id MUST match the function's APNS_BUNDLE_ID secret.
 final class PushNotificationService: NSObject, UNUserNotificationCenterDelegate {
     static let shared = PushNotificationService()
 
     private weak var appState: AppState?
-    private let tokenKey = "ca.totalfree.admin.apnsDeviceToken"
+    private let tokenKey = "ca.totalfree.app.apnsDeviceToken"
 
     var currentDeviceToken: String? {
         UserDefaults.standard.string(forKey: tokenKey)
@@ -20,7 +24,8 @@ final class PushNotificationService: NSObject, UNUserNotificationCenterDelegate 
     @MainActor
     func requestAuthorizationAndRegister() async {
         do {
-            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
+            let granted = try await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .badge, .sound])
             guard granted else { return }
             UIApplication.shared.registerForRemoteNotifications()
         } catch {
@@ -38,9 +43,7 @@ final class PushNotificationService: NSObject, UNUserNotificationCenterDelegate 
     func didRegisterForRemoteNotifications(deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
         UserDefaults.standard.set(token, forKey: tokenKey)
-        Task {
-            await appState?.registerPushDeviceToken(token)
-        }
+        Task { await appState?.registerPushDeviceToken(token) }
     }
 
     @MainActor
