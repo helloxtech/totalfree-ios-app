@@ -34,6 +34,9 @@ Members post from **My Stuff** (the **+ New post** button), not a separate tab.
 - **Session:** access + refresh tokens stored in the iOS Keychain.
 - **Mirrors** the web app's data layer (`TotalFree-Claude/src/lib/api.js`) so both
   clients speak to the database the same way.
+- **Auth emails:** sign-up still goes through Supabase Auth. Confirmation emails
+  are sent by the shared `TotalFree-Claude/supabase/functions/send-email` Auth hook
+  via Resend; the iOS signup sets the confirmation redirect to `https://totalfree.ca/`.
 
 ### Source map
 
@@ -75,7 +78,8 @@ else is environment-specific.
 In-app alerts (the bell tab) work today. For real push:
 
 - The app registers its APNs device token in the Supabase `device_tokens` table
-  (`{ user_id, device_token, platform: "ios" }`) after sign-in.
+  (`{ user_id, device_token, platform: "ios", apns_environment, bundle_id }`)
+  after sign-in.
 - The deployed `send-push` edge function reads that table and delivers via APNs.
 - The function's `APNS_BUNDLE_ID` secret **must equal the app bundle id**
   (`ca.totalfree.admin`), because it's used as the `apns-topic`.

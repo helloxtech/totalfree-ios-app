@@ -15,6 +15,23 @@ final class PushNotificationService: NSObject, UNUserNotificationCenterDelegate 
         UserDefaults.standard.string(forKey: tokenKey)
     }
 
+    var apnsEnvironment: String {
+        let configured = (Bundle.main.object(forInfoDictionaryKey: "TotalFreeAPNSEnvironment") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if configured == "production" { return "production" }
+        if configured == "development" || configured == "sandbox" { return "sandbox" }
+        #if DEBUG
+        return "sandbox"
+        #else
+        return "production"
+        #endif
+    }
+
+    var bundleId: String {
+        Bundle.main.bundleIdentifier ?? "ca.totalfree.admin"
+    }
+
     @MainActor
     func configure(appState: AppState) {
         self.appState = appState

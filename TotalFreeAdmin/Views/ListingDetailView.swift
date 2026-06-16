@@ -15,6 +15,16 @@ struct ListingDetailView: View {
     @State private var geocoded: CLLocationCoordinate2D?
 
     private var isOwner: Bool { listing.ownerId != nil && listing.ownerId == appState.userId }
+    private var sourceURL: URL? {
+        guard let raw = listing.externalUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        if raw.hasPrefix("http://") || raw.hasPrefix("https://") {
+            return URL(string: raw)
+        }
+        return URL(string: "https://\(raw)")
+    }
+    private var usesExternalSourceAction: Bool {
+        listing.ownerId == nil && ["partner", "sponsored"].contains(listing.sourceType)
+    }
 
     var body: some View {
         ScrollView {
@@ -74,7 +84,7 @@ struct ListingDetailView: View {
 
                 actions
 
-                if let url = listing.externalUrl, let u = URL(string: url) {
+                if !usesExternalSourceAction, let u = sourceURL {
                     Link(destination: u) {
                         Label("Open on provider's site", systemImage: "arrow.up.right.square")
                     }
@@ -223,13 +233,29 @@ struct ListingDetailView: View {
             )
         } else if listing.status == "active" {
             VStack(spacing: 10) {
-                Button {
-                    if appState.isAuthed { showRequest = true } else { showAuth = true }
-                } label: {
-                    Label(listing.isWanted ? "Offer to help" : "Ask for this", systemImage: "hand.raised")
-                        .bold().frame(maxWidth: .infinity)
+                if usesExternalSourceAction {
+                    if let u = sourceURL {
+                        Link(destination: u) {
+                            Label("View original source", systemImage: "arrow.up.right.square")
+                                .bold().frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        InfoCallout(
+                            title: "Source contact unavailable",
+                            message: "This \(AppConstants.sourceLabel(listing.sourceType).lowercased()) listing is not claimed yet.",
+                            systemImage: "link.badge.plus"
+                        )
+                    }
+                } else {
+                    Button {
+                        if appState.isAuthed { showRequest = true } else { showAuth = true }
+                    } label: {
+                        Label(listing.isWanted ? "Offer to help" : "Ask for this", systemImage: "hand.raised")
+                            .bold().frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
 
                 Button(role: .destructive) {
                     if appState.isAuthed { showReport = true } else { showAuth = true }

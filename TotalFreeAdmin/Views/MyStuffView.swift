@@ -93,9 +93,11 @@ struct MessagesView: View {
                         systemImage: "bubble.left.and.bubble.right"
                     )
                 } else {
-                    List(requests) { req in
-                        NavigationLink { RequestThreadView(request: req) } label: {
-                            RequestRow(request: req, isIncoming: req.ownerId == appState.userId)
+                    List(requestGroups) { group in
+                        NavigationLink {
+                            ListingRequestersView(group: group)
+                        } label: {
+                            RequestListingGroupRow(group: group, userId: appState.userId)
                         }
                     }
                     .listStyle(.plain)
@@ -114,11 +116,119 @@ struct MessagesView: View {
         if let r = await appState.load({ try await $0.fetchMyRequests(userId: uid) }) { requests = r }
         await appState.refreshNotifications()
     }
+
+    private var requestGroups: [RequestListingGroup] {
+        Dictionary(grouping: requests, by: \.listingId)
+            .map { listingId, rows in
+                let sorted = rows.sorted { ($0.latestActivityAt ?? "") > ($1.latestActivityAt ?? "") }
+                return RequestListingGroup(listingId: listingId, requests: sorted)
+            }
+            .sorted { ($0.latestActivityAt ?? "") > ($1.latestActivityAt ?? "") }
+    }
+}
+
+private struct RequestListingGroup: Identifiable, Equatable {
+    let listingId: String
+    let requests: [AppRequest]
+
+    var id: String { listingId }
+    var title: String { requests.first?.itemTitle ?? "Listing" }
+    var imageUrl: String? { requests.first?.listings?.imageUrl }
+    var latestActivityAt: String? { requests.first?.latestActivityAt }
+    var latestRequest: AppRequest? { requests.first }
+}
+
+private struct RequestListingGroupRow: View {
+    let group: RequestListingGroup
+    let userId: String?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            thumbnail
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(group.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer()
+                    Text("\(group.requests.count)")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Theme.accent.opacity(0.15), in: Capsule())
+                        .foregroundStyle(Theme.accent)
+                }
+                if let latest = group.latestRequest {
+                    Text(counterpartyText(for: latest))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if !latest.message.isEmpty {
+                        Text(latest.message)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(2)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var thumbnail: some View {
+        if let imageUrl = group.imageUrl, let url = URL(string: imageUrl) {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    Image(systemName: "shippingbox")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 48, height: 48)
+            .background(Color(.secondarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        } else {
+            Image(systemName: "shippingbox")
+                .font(.title3)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 48, height: 48)
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func counterpartyText(for request: AppRequest) -> String {
+        if request.ownerId == userId {
+            "Latest from \(request.requesterName) · \(relativeDate(request.latestActivityAt))"
+        } else {
+            "Latest to \(request.ownerName) · \(relativeDate(request.latestActivityAt))"
+        }
+    }
+}
+
+private struct ListingRequestersView: View {
+    @EnvironmentObject private var appState: AppState
+    let group: RequestListingGroup
+
+    var body: some View {
+        List(group.requests) { req in
+            NavigationLink {
+                RequestThreadView(request: req)
+            } label: {
+                RequestRow(request: req, isIncoming: req.ownerId == appState.userId, showsItemTitle: false)
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle(group.title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
 }
 
 private struct RequestRow: View {
     let request: AppRequest
     let isIncoming: Bool
+    var showsItemTitle = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -129,12 +239,24 @@ private struct RequestRow: View {
                 Spacer()
                 StatusBadge(status: request.status)
             }
-            Text(request.itemTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Text(showsItemTitle ? request.itemTitle : counterpartyText)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            if showsItemTitle {
+                Text(counterpartyText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             if !request.message.isEmpty {
                 Text(request.message).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private var counterpartyText: String {
+        isIncoming ? "From \(request.requesterName)" : "To \(request.ownerName)"
     }
 }
 

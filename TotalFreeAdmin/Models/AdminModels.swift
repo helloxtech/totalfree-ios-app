@@ -153,7 +153,17 @@ struct Listing: Codable, Identifiable, Equatable {
 
 // MARK: - Requests + messages
 
-struct ListingRef: Codable, Equatable { let title: String? }
+struct ListingRef: Codable, Equatable {
+    let title: String?
+    let imageUrl: String?
+    let category: String?
+    let sourceType: String?
+}
+
+struct RequestPersonRef: Codable, Equatable {
+    let id: String?
+    let name: String?
+}
 
 struct AppRequest: Codable, Identifiable, Equatable {
     let id: String
@@ -165,8 +175,13 @@ struct AppRequest: Codable, Identifiable, Equatable {
     let createdAt: String?
     let updatedAt: String?
     let listings: ListingRef?
+    let requester: RequestPersonRef?
+    let owner: RequestPersonRef?
 
     var itemTitle: String { listings?.title ?? "a listing" }
+    var latestActivityAt: String? { updatedAt ?? createdAt }
+    var requesterName: String { requester?.name ?? "a neighbour" }
+    var ownerName: String { owner?.name ?? "the owner" }
 }
 
 struct Message: Codable, Identifiable, Equatable {
@@ -379,6 +394,12 @@ struct DeviceTokenInsert: Encodable {
     let user_id: String
     let device_token: String
     let platform: String
+    let apns_environment: String
+    let bundle_id: String
+    let is_active: Bool
+    let last_error: String
+    let last_seen_at: String
+    let updated_at: String
 }
 
 struct RequestStatusUpdate: Encodable { let status: String }

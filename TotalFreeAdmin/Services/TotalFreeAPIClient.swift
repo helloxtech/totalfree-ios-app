@@ -66,6 +66,9 @@ struct SupabaseClient {
         let data = try await send(
             path: "/auth/v1/signup",
             method: "POST",
+            query: Self.queryString([
+                URLQueryItem(name: "redirect_to", value: SupabaseConfig.emailConfirmationRedirectURL.absoluteString),
+            ]),
             body: SignUpBody(email: email, password: password, data: ["name": name]),
             authed: false
         )
@@ -235,6 +238,12 @@ struct SupabaseClient {
         }
         if let s = String(data: data, encoding: .utf8), !s.isEmpty, s.count < 300 { return s }
         return "Request failed (\(status))."
+    }
+
+    private static func queryString(_ items: [URLQueryItem]) -> String {
+        var components = URLComponents()
+        components.queryItems = items
+        return components.percentEncodedQuery ?? ""
     }
 }
 

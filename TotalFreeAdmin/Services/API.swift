@@ -8,6 +8,9 @@ import Foundation
 extension SupabaseClient {
 
     private var listingSelect: String { SupabaseConfig.listingSelect }
+    private var requestSelect: String {
+        "*,listings(title,image_url,category,source_type),requester:requester_id(id,name),owner:owner_id(id,name)"
+    }
 
     // MARK: Listings (public browse)
 
@@ -106,7 +109,7 @@ extension SupabaseClient {
     /// Requests where I'm the requester OR the listing owner.
     func fetchMyRequests(userId: String) async throws -> [AppRequest] {
         try await restGet(
-            "/rest/v1/requests?select=*,listings(title)&or=(requester_id.eq.\(userId),owner_id.eq.\(userId))&order=updated_at.desc",
+            "/rest/v1/requests?select=\(requestSelect)&or=(requester_id.eq.\(userId),owner_id.eq.\(userId))&order=updated_at.desc",
             as: [AppRequest].self
         )
     }
@@ -206,10 +209,21 @@ extension SupabaseClient {
 
     // MARK: Device tokens (APNs)
 
-    func registerDeviceToken(userId: String, token: String) async throws {
+    func registerDeviceToken(userId: String, token: String, apnsEnvironment: String, bundleId: String) async throws {
+        let now = ISO8601DateFormatter().string(from: Date())
         try await restInsertNoReturn(
             "device_tokens",
-            body: DeviceTokenInsert(user_id: userId, device_token: token, platform: "ios"),
+            body: DeviceTokenInsert(
+                user_id: userId,
+                device_token: token,
+                platform: "ios",
+                apns_environment: apnsEnvironment,
+                bundle_id: bundleId,
+                is_active: true,
+                last_error: "",
+                last_seen_at: now,
+                updated_at: now
+            ),
             prefer: "resolution=merge-duplicates,return=minimal",
             onConflict: "user_id,device_token"
         )
@@ -299,12 +313,12 @@ extension SupabaseClient {
     // MARK: Conversations (message.read.any — RLS lets staff read every thread)
 
     func fetchAllRequests() async throws -> [AppRequest] {
-        try await restGet("/rest/v1/requests?select=*,listings(title)&order=updated_at.desc&limit=100", as: [AppRequest].self)
+        try await restGet("/rest/v1/requests?select=\(requestSelect)&order=updated_at.desc&limit=100", as: [AppRequest].self)
     }
 
     /// A single request by id (for deep-linking from a notification).
     func fetchRequest(id: String) async throws -> AppRequest? {
-        let rows = try await restGet("/rest/v1/requests?select=*,listings(title)&id=eq.\(id)&limit=1", as: [AppRequest].self)
+        let rows = try await restGet("/rest/v1/requests?select=\(requestSelect)&id=eq.\(id)&limit=1", as: [AppRequest].self)
         return rows.first
     }
 

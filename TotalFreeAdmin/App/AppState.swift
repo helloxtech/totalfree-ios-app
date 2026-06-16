@@ -179,7 +179,12 @@ final class AppState: ObservableObject {
 
     func registerPushDeviceToken(_ token: String) async {
         guard let uid = userId else { return }
-        try? await client().registerDeviceToken(userId: uid, token: token)
+        try? await client().registerDeviceToken(
+            userId: uid,
+            token: token,
+            apnsEnvironment: PushNotificationService.shared.apnsEnvironment,
+            bundleId: PushNotificationService.shared.bundleId
+        )
     }
 
     func recordPushRegistrationFailure(_ message: String) {

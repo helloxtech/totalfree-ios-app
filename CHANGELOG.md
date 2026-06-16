@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — 2026-06-16 — Message grouping and Resend verification
+
+### Changed
+
+- Messages now open as item groups first, then requester/request rows, then the conversation thread.
+- Sign-up verification uses the shared Supabase Auth email flow with the TotalFree Resend hook and a `totalfree.ca` confirmation redirect.
+
+## Unreleased — 2026-06-16 — Source-linked listing actions
+
+### Changed
+
+- Unclaimed organization and business listings now show a primary "View original source" button instead of opening the in-app request flow.
+
+## Unreleased — 2026-06-16 — App logo refresh
+
+### Changed
+
+- Replaced the app icon and in-app logo asset with the new TotalFree artwork.
+
+## Unreleased — 2026-06-16 — APNs registration metadata
+
+### Fixed
+
+- Push registration now sends the app bundle id plus the APNs environment
+  (`sandbox` for Debug/development, `production` for Release), so the
+  TotalFree-Claude `send-push` function can route each device token to the
+  correct Apple push gateway.
+
 ## Unreleased — 2026-06-15 (d) — Owner self-service, multi-photo, toast, copy
 
 ### Added
