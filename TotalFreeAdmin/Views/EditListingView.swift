@@ -16,8 +16,9 @@ struct EditListingView: View {
     @State private var condition: String
     @State private var saving = false
 
-    init(listing: Listing, onSaved: @escaping (Listing) -> Void) {
+    init(listing: Listing, resubmitOnSave: Bool = false, onSaved: @escaping (Listing) -> Void) {
         self.listing = listing
+        self.resubmitOnSave = resubmitOnSave
         self.onSaved = onSaved
         _title = State(initialValue: listing.title)
         _description = State(initialValue: listing.description)
@@ -68,12 +69,13 @@ struct EditListingView: View {
                     title: title.trimmingCharacters(in: .whitespaces),
                     description: description.trimmingCharacters(in: .whitespaces),
                     category: category,
-                    condition: listing.isWanted ? nil : condition
+                    condition: listing.isWanted ? nil : condition,
+                    resubmit: resubmitOnSave
                 )
             }
             saving = false
             if let updated {
-                appState.infoMessage = "Listing updated."
+                appState.infoMessage = resubmitOnSave ? "Saved — sent back for review." : "Listing updated."
                 onSaved(updated)
                 dismiss()
             }
