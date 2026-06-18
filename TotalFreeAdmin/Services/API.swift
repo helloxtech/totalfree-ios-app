@@ -270,6 +270,11 @@ extension SupabaseClient {
         try await rpcDecoded("my_entity_kind", params: EmptyParams(), as: String.self)
     }
 
+    /// Earned achievement badges for the signed-in user.
+    func fetchMyBadges() async throws -> [AppBadge] {
+        try await rpcDecoded("my_badges", params: EmptyParams(), as: [AppBadge].self)
+    }
+
     // MARK: Edit any listing (listing.edit.any)
 
     @discardableResult

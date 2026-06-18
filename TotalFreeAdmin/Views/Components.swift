@@ -169,9 +169,47 @@ struct ListingCard: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+                ContributorChip(listing: listing)
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// Small recognition chip on a listing: "Verified Organization/Business" for an
+/// approved org/business, otherwise the giver's contributor level (hidden at 0).
+struct ContributorChip: View {
+    let listing: Listing
+
+    private var entityKind: String {
+        switch listing.sourceType {
+        case "partner": return "Organization"
+        case "sponsored": return "Business"
+        default: return "Member"
+        }
+    }
+    private var verified: Bool {
+        (listing.sourceType == "sponsored" && listing.sponsors?.status == "active") ||
+        (listing.sourceType == "partner" && listing.partners?.status == "active")
+    }
+    private var chip: (text: String, verified: Bool)? {
+        if verified { return ("Verified \(entityKind)", true) }
+        let gifts = listing.profiles?.giftsGiven ?? 0
+        guard gifts >= 1 else { return nil }
+        let lvl = ContributorLevel.forEntity(entityKind, gifts: gifts)
+        return ("\(lvl.emoji) \(lvl.name)", false)
+    }
+
+    var body: some View {
+        if let chip {
+            HStack(spacing: 3) {
+                if chip.verified { Image(systemName: "checkmark.seal.fill").font(.caption2) }
+                Text(chip.text).font(.caption2.bold())
+            }
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(Theme.accent.opacity(0.12), in: Capsule())
+            .foregroundStyle(Theme.accent)
+        }
     }
 }
 

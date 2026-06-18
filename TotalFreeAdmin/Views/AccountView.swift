@@ -94,6 +94,23 @@ struct AccountView: View {
                     }
                 }
                 .padding(.vertical, 4)
+
+                if !appState.badges.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(appState.badges) { b in
+                                VStack(spacing: 3) {
+                                    Text(b.emoji).font(.title3)
+                                    Text(b.count.flatMap { $0 > 1 ? "\(b.label) ×\($0)" : nil } ?? b.label)
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
+                                .frame(minWidth: 72)
+                                .padding(.vertical, 6).padding(.horizontal, 6)
+                                .background(Theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }
+                }
             }
 
             Section("Profile") {
@@ -139,7 +156,7 @@ struct AccountView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .task { await appState.refreshGifts(); await appState.refreshEntityKind() }
+        .task { await appState.refreshGifts(); await appState.refreshEntityKind(); await appState.refreshBadges() }
     }
 
     @ViewBuilder

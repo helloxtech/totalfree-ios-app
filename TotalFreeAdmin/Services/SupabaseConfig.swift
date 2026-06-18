@@ -13,7 +13,7 @@ enum SupabaseConfig {
     // PostgREST embed used everywhere a listing is read, so cards/detail get the
     // owner name + sponsor/partner label in one round trip.
     static let listingSelect =
-        "*,sponsors(id,business_name,website,status),partners(id,name,website),profiles:owner_id(id,name)"
+        "*,sponsors(id,business_name,website,status),partners(id,name,website,status),profiles:owner_id(id,name,gifts_given)"
 }
 
 // Shared vocabulary mirrored from the web app's src/lib/constants.js so the

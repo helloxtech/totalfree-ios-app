@@ -22,6 +22,7 @@ final class AppState: ObservableObject {
     @Published private(set) var myPostsActionableCount = 0
     @Published private(set) var giftsGiven = 0
     @Published private(set) var entityKind = "Member"   // Member / Business / Organization
+    @Published private(set) var badges: [AppBadge] = []
 
     /// Notification types that belong to a conversation. These are surfaced in the
     /// Messages tab (and its badge), never in the Alerts feed — mirrors the web app's
@@ -118,6 +119,7 @@ final class AppState: ObservableObject {
         myPostsActionableCount = 0
         giftsGiven = 0
         entityKind = "Member"
+        badges = []
     }
 
     private func applySession(_ s: AuthSession) async {
@@ -173,6 +175,12 @@ final class AppState: ObservableObject {
     func refreshEntityKind() async {
         guard isAuthed else { entityKind = "Member"; return }
         if let k = try? await client().fetchMyEntityKind(), !k.isEmpty { entityKind = k }
+    }
+
+    /// Earned achievement badges (shown on Account).
+    func refreshBadges() async {
+        guard isAuthed else { badges = []; return }
+        if let b = try? await client().fetchMyBadges() { badges = b }
     }
 
     // MARK: - Notifications

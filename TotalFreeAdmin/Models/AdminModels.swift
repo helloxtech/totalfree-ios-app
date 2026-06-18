@@ -96,9 +96,9 @@ struct Profile: Codable, Identifiable, Equatable {
 
 // MARK: - Listings
 
-struct OwnerRef: Codable, Equatable { let id: String?; let name: String? }
+struct OwnerRef: Codable, Equatable { let id: String?; let name: String?; let giftsGiven: Int? }
 struct SponsorRef: Codable, Equatable { let id: String?; let businessName: String?; let website: String?; let status: String? }
-struct PartnerRef: Codable, Equatable { let id: String?; let name: String?; let website: String? }
+struct PartnerRef: Codable, Equatable { let id: String?; let name: String?; let website: String?; let status: String? }
 
 struct Listing: Codable, Identifiable, Equatable {
     let id: String
@@ -462,6 +462,15 @@ struct ContributorLevel {
         let nxt: (min: Int, name: String)? = idx + 1 < ladder.count ? (ladder[idx + 1].min, ladder[idx + 1].name) : nil
         return ContributorLevel(name: cur.name, emoji: cur.emoji, min: cur.min, next: nxt, unit: unit)
     }
+}
+
+/// An earned achievement badge (from the my_badges() RPC).
+struct AppBadge: Codable, Identifiable, Equatable {
+    let key: String
+    let label: String
+    let emoji: String
+    let count: Int?
+    var id: String { key }
 }
 
 // MARK: - Lightweight JSON value (for user_metadata decoding)
