@@ -81,7 +81,7 @@ struct AccountView: View {
                     Text(level.emoji).font(.system(size: 40))
                     VStack(alignment: .leading, spacing: 4) {
                         Text(level.name).font(.headline)
-                        Text("\(appState.giftsGiven) gift\(appState.giftsGiven == 1 ? "" : "s") given")
+                        Text("\(appState.giftsGiven) \(level.unit)\(appState.giftsGiven == 1 ? "" : "s") given")
                             .font(.caption).foregroundStyle(.secondary)
                         if let next = level.next {
                             ProgressView(value: Double(appState.giftsGiven - level.min), total: Double(max(1, next.min - level.min)))
@@ -139,7 +139,7 @@ struct AccountView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .task { await appState.refreshGifts() }
+        .task { await appState.refreshGifts(); await appState.refreshEntityKind() }
     }
 
     @ViewBuilder
@@ -176,7 +176,7 @@ struct AccountView: View {
         if ok { await appState.loadProfile() }
     }
 
-    private var level: NeighbourLevel { NeighbourLevel.forGifts(appState.giftsGiven) }
+    private var level: ContributorLevel { ContributorLevel.forEntity(appState.entityKind, gifts: appState.giftsGiven) }
 
     private var initials: String {
         let parts = appState.displayName.split(separator: " ")

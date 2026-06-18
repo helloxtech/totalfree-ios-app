@@ -21,6 +21,7 @@ final class AppState: ObservableObject {
     @Published private(set) var reportsCount = 0
     @Published private(set) var myPostsActionableCount = 0
     @Published private(set) var giftsGiven = 0
+    @Published private(set) var entityKind = "Member"   // Member / Business / Organization
 
     /// Notification types that belong to a conversation. These are surfaced in the
     /// Messages tab (and its badge), never in the Alerts feed — mirrors the web app's
@@ -116,6 +117,7 @@ final class AppState: ObservableObject {
         reportsCount = 0
         myPostsActionableCount = 0
         giftsGiven = 0
+        entityKind = "Member"
     }
 
     private func applySession(_ s: AuthSession) async {
@@ -131,6 +133,7 @@ final class AppState: ObservableObject {
         await refreshStaffCounts()
         await refreshMyPostsCount()
         await refreshGifts()
+        await refreshEntityKind()
         await PushNotificationService.shared.requestAuthorizationAndRegister()
         await PushNotificationService.shared.registerStoredTokenIfAvailable()
     }
@@ -160,10 +163,16 @@ final class AppState: ObservableObject {
         myPostsActionableCount = (try? await client().countMyActionableListings(ownerId: uid)) ?? myPostsActionableCount
     }
 
-    /// Completed gifts → the person's Good Neighbour level (shown on Account).
+    /// Completed gifts → the person's contributor level (shown on Account).
     func refreshGifts() async {
         guard let uid = userId else { giftsGiven = 0; return }
         giftsGiven = (try? await client().countMyGifts(ownerId: uid)) ?? giftsGiven
+    }
+
+    /// The person's entity kind (Member/Business/Organization) — picks the badge track.
+    func refreshEntityKind() async {
+        guard isAuthed else { entityKind = "Member"; return }
+        if let k = try? await client().fetchMyEntityKind(), !k.isEmpty { entityKind = k }
     }
 
     // MARK: - Notifications

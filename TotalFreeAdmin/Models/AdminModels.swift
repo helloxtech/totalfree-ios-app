@@ -423,30 +423,44 @@ struct PasswordGrantBody: Encodable { let email: String; let password: String }
 struct RefreshTokenBody: Encodable { let refresh_token: String }
 struct SignUpBody: Encodable { let email: String; let password: String; let data: [String: String] }
 
-// MARK: - Contributor recognition (Good Neighbour levels)
+// MARK: - Contributor recognition (entity-aware levels)
 
-struct NeighbourLevel {
+/// A level on one of three contributor tracks — Member (Good Neighbour),
+/// Business, or Organization — by completed give-aways. Mirrored on web.
+/// Admin/Moderator are staff roles and don't have a contributor track.
+struct ContributorLevel {
     let name: String
     let emoji: String
     let min: Int
     let next: (min: Int, name: String)?
+    let unit: String   // "gift" / "offer" / "contribution"
 
-    /// Gifts = completed give-aways (handoffs). One source of truth, mirrored on web.
-    static let ladder: [(min: Int, name: String, emoji: String)] = [
-        (0, "New Neighbour", "👋"),
-        (1, "Kind Neighbour", "🌱"),
-        (5, "Good Neighbour", "🤝"),
-        (15, "Generous Neighbour", "🎁"),
-        (40, "Neighbourhood Champion", "🏅"),
-        (100, "Local Legend", "🌟"),
+    private typealias Tier = (min: Int, name: String, emoji: String)
+    private static let neighbour: [Tier] = [
+        (0, "New Neighbour", "👋"), (1, "Kind Neighbour", "🌱"), (5, "Good Neighbour", "🤝"),
+        (15, "Generous Neighbour", "🎁"), (40, "Neighbourhood Champion", "🏅"), (100, "Local Legend", "🌟"),
+    ]
+    private static let business: [Tier] = [
+        (0, "Local Business", "🏪"), (5, "Friendly Local Business", "💚"), (25, "Community Champion", "🌟"),
+    ]
+    private static let organization: [Tier] = [
+        (0, "Community Organization", "🏛️"), (5, "Community Partner", "🤝"), (25, "Community Pillar", "🏆"),
     ]
 
-    static func forGifts(_ gifts: Int) -> NeighbourLevel {
+    /// Pick the track by entity kind (Member / Business / Organization).
+    static func forEntity(_ kind: String, gifts: Int) -> ContributorLevel {
+        let ladder: [Tier]
+        let unit: String
+        switch kind {
+        case "Business": ladder = business; unit = "offer"
+        case "Organization": ladder = organization; unit = "contribution"
+        default: ladder = neighbour; unit = "gift"
+        }
         var idx = 0
         for (i, t) in ladder.enumerated() where gifts >= t.min { idx = i }
         let cur = ladder[idx]
         let nxt: (min: Int, name: String)? = idx + 1 < ladder.count ? (ladder[idx + 1].min, ladder[idx + 1].name) : nil
-        return NeighbourLevel(name: cur.name, emoji: cur.emoji, min: cur.min, next: nxt)
+        return ContributorLevel(name: cur.name, emoji: cur.emoji, min: cur.min, next: nxt, unit: unit)
     }
 }
 

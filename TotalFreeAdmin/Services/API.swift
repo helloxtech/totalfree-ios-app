@@ -265,6 +265,11 @@ extension SupabaseClient {
         try await rpcDecoded("my_perms", params: EmptyParams(), as: [String].self)
     }
 
+    /// The caller's single entity kind: "Member" / "Business" / "Organization".
+    func fetchMyEntityKind() async throws -> String {
+        try await rpcDecoded("my_entity_kind", params: EmptyParams(), as: String.self)
+    }
+
     // MARK: Edit any listing (listing.edit.any)
 
     @discardableResult
