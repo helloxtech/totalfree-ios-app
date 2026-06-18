@@ -16,14 +16,11 @@ struct RootView: View {
             if appState.isAuthed {
                 MyStuffView()
                     .tabItem { Label("My Posts", systemImage: "shippingbox") }
+                    .badge(appState.myPostsActionableCount)
 
                 MessagesView()
                     .tabItem { Label("Messages", systemImage: "bubble.left.and.bubble.right") }
                     .badge(appState.messagesUnreadCount)
-
-                NotificationsView()
-                    .tabItem { Label("Alerts", systemImage: "bell") }
-                    .badge(appState.unreadCount)
             }
 
             if appState.canSeeStaffArea {
@@ -40,6 +37,7 @@ struct RootView: View {
                 Task {
                     await appState.refreshNotifications()
                     await appState.refreshStaffCounts()
+                    await appState.refreshMyPostsCount()
                 }
             }
         }
@@ -92,11 +90,8 @@ struct StaffHubView: View {
                     }
                 }
 
-                if appState.can(Perm.messageReadAny) || appState.can(Perm.analyticsView) || appState.can(Perm.userView) {
+                if appState.can(Perm.analyticsView) || appState.can(Perm.userView) {
                     Section("Oversight") {
-                        if appState.can(Perm.messageReadAny) {
-                            hubLink("Conversations", "bubble.left.and.bubble.right", .teal) { ConversationsView() }
-                        }
                         if appState.can(Perm.analyticsView) {
                             hubLink("Analytics", "chart.bar", .green) { AnalyticsView() }
                         }
@@ -131,12 +126,23 @@ struct StaffHubView: View {
         NavigationLink {
             destination()
         } label: {
-            Label {
-                Text(title)
-            } icon: {
-                Image(systemName: icon).foregroundStyle(color)
+            HStack {
+                Label {
+                    Text(title)
+                } icon: {
+                    Image(systemName: icon).foregroundStyle(color)
+                }
+                Spacer()
+                if badge > 0 {
+                    // Prominent red count that visually matches the tab's badge,
+                    // so it's obvious what the "1" on Admin refers to.
+                    Text("\(badge)")
+                        .font(.footnote.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(.red, in: Capsule())
+                }
             }
         }
-        .badge(badge)
     }
 }

@@ -2,19 +2,22 @@ import SwiftUI
 
 struct NotificationsView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    /// True when shown as a sheet from the bell, so we offer a Done button.
+    var presentedModally = false
 
     var body: some View {
         NavigationStack {
             Group {
-                if appState.notifications.isEmpty {
+                if appState.alertNotifications.isEmpty {
                     EmptyState(
                         title: "You're all caught up",
-                        message: "Alerts about your requests, messages, and approved posts show up here.",
+                        message: "Alerts about your posts and requests show up here. Conversations live in Messages.",
                         systemImage: "bell"
                     )
                 } else {
                     List {
-                        ForEach(appState.notifications) { note in
+                        ForEach(appState.alertNotifications) { note in
                             NavigationLink {
                                 NotificationDetailView(note: note)
                             } label: {
@@ -34,9 +37,14 @@ struct NotificationsView: View {
             }
             .navigationTitle("Alerts")
             .toolbar {
+                if presentedModally {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Done") { dismiss() }
+                    }
+                }
                 if appState.unreadCount > 0 {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Mark all read") { Task { await appState.markAllNotificationsRead() } }
+                        Button("Mark all read") { Task { await appState.markAllAlertsRead() } }
                     }
                 }
             }
@@ -62,6 +70,34 @@ struct NotificationsView: View {
             if !note.read {
                 Circle().fill(Theme.accent).frame(width: 8, height: 8)
             }
+        }
+    }
+}
+
+/// Top-bar bell that opens the Alerts feed and shows an unread badge. Replaces
+/// the old Alerts tab — alerts now live in the home header (like the web app).
+struct NotificationBellButton: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var showAlerts = false
+
+    var body: some View {
+        Button { showAlerts = true } label: {
+            Image(systemName: "bell")
+                .overlay(alignment: .topTrailing) {
+                    if appState.unreadCount > 0 {
+                        Text(appState.unreadCount > 9 ? "9+" : "\(appState.unreadCount)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(.red, in: Capsule())
+                            .offset(x: 8, y: -7)
+                    }
+                }
+        }
+        .accessibilityLabel(appState.unreadCount > 0 ? "Alerts, \(appState.unreadCount) unread" : "Alerts")
+        .sheet(isPresented: $showAlerts) {
+            NotificationsView(presentedModally: true)
         }
     }
 }

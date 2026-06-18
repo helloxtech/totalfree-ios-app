@@ -1,4 +1,7 @@
 import SwiftUI
+import PhotosUI
+import CoreLocation
+import UIKit
 
 /// My posts — the listings I've shared. Posting also happens here (+ button).
 struct MyStuffView: View {
@@ -6,6 +9,9 @@ struct MyStuffView: View {
     @State private var listings: [Listing] = []
     @State private var loading = false
     @State private var showPost = false
+    @State private var statusFilter = "all"
+    @State private var showOffers = true
+    @State private var showWanted = true
 
     var body: some View {
         NavigationStack {
@@ -24,17 +30,36 @@ struct MyStuffView: View {
                 } else {
                     List {
                         if !offers.isEmpty {
-                            Section("Giving away (\(offers.count))") {
-                                ForEach(offers) { postRow($0) }
+                            Section {
+                                if showOffers { ForEach(offers) { postRow($0) } }
+                            } header: {
+                                collapsibleHeader("Giving away", count: offers.count, expanded: $showOffers)
                             }
                         }
                         if !wanted.isEmpty {
-                            Section("Wanted (\(wanted.count))") {
-                                ForEach(wanted) { postRow($0) }
+                            Section {
+                                if showWanted { ForEach(wanted) { postRow($0) } }
+                            } header: {
+                                collapsibleHeader("Wanted", count: wanted.count, expanded: $showWanted)
                             }
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .safeAreaInset(edge: .top) {
+                        VStack(spacing: 0) {
+                            if appState.myPostsActionableCount > 0 { actionableBanner }
+                            statusBar
+                        }
+                    }
+                    .overlay {
+                        if filtered.isEmpty {
+                            EmptyState(
+                                title: "Nothing in this filter",
+                                message: "No posts match this status. Try a different filter.",
+                                systemImage: "line.3.horizontal.decrease.circle"
+                            )
+                        }
+                    }
                     .refreshable { await reload() }
                 }
             }
@@ -53,8 +78,67 @@ struct MyStuffView: View {
         }
     }
 
-    private var offers: [Listing] { listings.filter { $0.listingKind != "wanted" } }
-    private var wanted: [Listing] { listings.filter { $0.listingKind == "wanted" } }
+    private var statusBar: some View {
+        Picker("Status", selection: $statusFilter) {
+            Text("All").tag("all")
+            Text("Active").tag("active")
+            Text("Pending").tag("pending_review")
+            Text("Closed").tag("closed")
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(.bar)
+    }
+
+    // Explains the number on the My Posts tab badge (rejected posts need a fix).
+    private var actionableBanner: some View {
+        let n = appState.myPostsActionableCount
+        return Button {
+            withAnimation { statusFilter = "closed" }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text("\(n) post\(n == 1 ? " was" : "s were") rejected — tap to review & resubmit")
+                    .font(.caption).foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal).padding(.vertical, 8)
+            .background(Color.orange.opacity(0.12))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Tappable section header that collapses its rows.
+    private func collapsibleHeader(_ title: String, count: Int, expanded: Binding<Bool>) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { expanded.wrappedValue.toggle() }
+        } label: {
+            HStack {
+                Text("\(title) (\(count))")
+                Spacer()
+                Image(systemName: expanded.wrappedValue ? "chevron.down" : "chevron.right")
+                    .font(.caption2.bold())
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Posts narrowed to the selected status. "Closed" = rejected / withdrawn / completed.
+    private var filtered: [Listing] {
+        switch statusFilter {
+        case "active": return listings.filter { $0.status == "active" }
+        case "pending_review": return listings.filter { $0.status == "pending_review" }
+        case "closed": return listings.filter { ["rejected", "removed", "completed"].contains($0.status) }
+        default: return listings
+        }
+    }
+    private var offers: [Listing] { filtered.filter { $0.listingKind != "wanted" } }
+    private var wanted: [Listing] { filtered.filter { $0.listingKind == "wanted" } }
 
     private func postRow(_ listing: Listing) -> some View {
         NavigationLink { ListingDetailView(listing: listing) } label: { ListingCard(listing: listing) }
@@ -65,6 +149,7 @@ struct MyStuffView: View {
         loading = true
         defer { loading = false }
         if let r = await appState.load({ try await $0.fetchMyListings(ownerId: uid) }) { listings = r }
+        await appState.refreshMyPostsCount()
     }
 }
 
@@ -93,11 +178,12 @@ struct MessagesView: View {
                         systemImage: "bubble.left.and.bubble.right"
                     )
                 } else {
-                    List(requestGroups) { group in
+                    List(groups) { group in
                         NavigationLink {
                             ListingRequestersView(group: group)
                         } label: {
-                            RequestListingGroupRow(group: group, userId: appState.userId)
+                            MessageGroupRow(group: group, userId: appState.userId,
+                                            unread: group.requests.contains { appState.conversationHasUnread($0.id) })
                         }
                     }
                     .listStyle(.plain)
@@ -117,106 +203,91 @@ struct MessagesView: View {
         await appState.refreshNotifications()
     }
 
-    private var requestGroups: [RequestListingGroup] {
+    /// Conversations grouped by item: one row per listing, newest activity first.
+    /// One conversation opens its thread directly; several open a per-person list.
+    private var groups: [MessageGroup] {
         Dictionary(grouping: requests, by: \.listingId)
             .map { listingId, rows in
-                let sorted = rows.sorted { ($0.latestActivityAt ?? "") > ($1.latestActivityAt ?? "") }
-                return RequestListingGroup(listingId: listingId, requests: sorted)
+                MessageGroup(listingId: listingId,
+                             requests: rows.sorted { ($0.latestActivityAt ?? "") > ($1.latestActivityAt ?? "") })
             }
             .sorted { ($0.latestActivityAt ?? "") > ($1.latestActivityAt ?? "") }
     }
 }
 
-private struct RequestListingGroup: Identifiable, Equatable {
+/// Conversations for one item, grouped so several requesters don't show as
+/// duplicate rows under the same title.
+private struct MessageGroup: Identifiable {
     let listingId: String
     let requests: [AppRequest]
-
     var id: String { listingId }
     var title: String { requests.first?.itemTitle ?? "Listing" }
     var imageUrl: String? { requests.first?.listings?.imageUrl }
     var latestActivityAt: String? { requests.first?.latestActivityAt }
-    var latestRequest: AppRequest? { requests.first }
+    var count: Int { requests.count }
 }
 
-private struct RequestListingGroupRow: View {
-    let group: RequestListingGroup
+/// One row in Messages — the item, who's involved, and a count when several
+/// neighbours are talking about the same post.
+private struct MessageGroupRow: View {
+    let group: MessageGroup
     let userId: String?
+    let unread: Bool
 
     var body: some View {
         HStack(spacing: 12) {
-            thumbnail
+            ListingThumb(url: group.imageUrl, size: 48)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(group.title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.subheadline.weight(unread ? .bold : .semibold))
                         .lineLimit(1)
                     Spacer()
-                    Text("\(group.requests.count)")
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Theme.accent.opacity(0.15), in: Capsule())
-                        .foregroundStyle(Theme.accent)
-                }
-                if let latest = group.latestRequest {
-                    Text(counterpartyText(for: latest))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    if !latest.message.isEmpty {
-                        Text(latest.message)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(2)
+                    if group.count > 1 {
+                        Text("\(group.count) people")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Theme.accent.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Theme.accent)
+                    } else if let only = group.requests.first {
+                        StatusBadge(status: only.status)
                     }
                 }
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if group.count == 1, let only = group.requests.first, !only.message.isEmpty {
+                    Text(only.message).font(.caption).foregroundStyle(.tertiary).lineLimit(2)
+                }
             }
+            if unread { Circle().fill(Theme.accent).frame(width: 9, height: 9) }
         }
         .padding(.vertical, 4)
     }
 
-    @ViewBuilder
-    private var thumbnail: some View {
-        if let imageUrl = group.imageUrl, let url = URL(string: imageUrl) {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    Image(systemName: "shippingbox")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 48, height: 48)
-            .background(Color(.secondarySystemFill))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        } else {
-            Image(systemName: "shippingbox")
-                .font(.title3)
-                .foregroundStyle(Theme.accent)
-                .frame(width: 48, height: 48)
-                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+    private var subtitle: String {
+        guard let latest = group.requests.first else { return "" }
+        if group.count > 1 {
+            return "\(group.count) conversations · \(relativeDate(group.latestActivityAt))"
         }
-    }
-
-    private func counterpartyText(for request: AppRequest) -> String {
-        if request.ownerId == userId {
-            "Latest from \(request.requesterName) · \(relativeDate(request.latestActivityAt))"
-        } else {
-            "Latest to \(request.ownerName) · \(relativeDate(request.latestActivityAt))"
-        }
+        let incoming = latest.ownerId == userId
+        return incoming
+            ? "From \(latest.requesterName) · \(relativeDate(latest.latestActivityAt))"
+            : "To \(latest.ownerName) · \(relativeDate(latest.latestActivityAt))"
     }
 }
 
+/// Per-person conversation list, shown when one item has several requesters.
 private struct ListingRequestersView: View {
     @EnvironmentObject private var appState: AppState
-    let group: RequestListingGroup
+    let group: MessageGroup
 
     var body: some View {
         List(group.requests) { req in
             NavigationLink {
                 RequestThreadView(request: req)
             } label: {
-                RequestRow(request: req, isIncoming: req.ownerId == appState.userId, showsItemTitle: false)
+                RequesterRow(request: req,
+                             isIncoming: req.ownerId == appState.userId,
+                             unread: appState.conversationHasUnread(req.id))
             }
         }
         .listStyle(.plain)
@@ -225,38 +296,32 @@ private struct ListingRequestersView: View {
     }
 }
 
-private struct RequestRow: View {
+private struct RequesterRow: View {
     let request: AppRequest
     let isIncoming: Bool
-    var showsItemTitle = true
+    let unread: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Label(isIncoming ? "Received" : "Sent", systemImage: isIncoming ? "tray.and.arrow.down" : "paperplane")
-                    .font(.caption2.bold())
-                    .foregroundStyle(isIncoming ? Theme.accent : .blue)
-                Spacer()
-                StatusBadge(status: request.status)
-            }
-            Text(showsItemTitle ? request.itemTitle : counterpartyText)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            if showsItemTitle {
-                Text(counterpartyText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Label(isIncoming ? "Received" : "Sent",
+                          systemImage: isIncoming ? "tray.and.arrow.down" : "paperplane")
+                        .font(.caption2.bold())
+                        .foregroundStyle(isIncoming ? Theme.accent : .blue)
+                    Spacer()
+                    StatusBadge(status: request.status)
+                }
+                Text(isIncoming ? "From \(request.requesterName)" : "To \(request.ownerName)")
+                    .font(.subheadline.weight(unread ? .bold : .semibold))
                     .lineLimit(1)
+                if !request.message.isEmpty {
+                    Text(request.message).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
             }
-            if !request.message.isEmpty {
-                Text(request.message).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
+            if unread { Circle().fill(Theme.accent).frame(width: 9, height: 9) }
         }
         .padding(.vertical, 2)
-    }
-
-    private var counterpartyText: String {
-        isIncoming ? "From \(request.requesterName)" : "To \(request.ownerName)"
     }
 }
 
@@ -272,6 +337,10 @@ struct RequestThreadView: View {
     @State private var status: String
     @State private var loading = false
     @State private var confirmComplete = false
+    @State private var showPhotoPicker = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var showLocationPicker = false
+    @State private var sending = false
 
     init(request: AppRequest, readOnly: Bool = false) {
         self.request = request
@@ -316,6 +385,7 @@ struct RequestThreadView: View {
                 }
                 .padding()
             }
+            .scrollDismissesKeyboard(.interactively)
             if readOnly {
                 Label("Read-only — staff view", systemImage: "eye")
                     .font(.caption).foregroundStyle(.secondary)
@@ -375,19 +445,46 @@ struct RequestThreadView: View {
     }
 
     private var composer: some View {
-        HStack(spacing: 8) {
-            TextField("Message…", text: $draft, axis: .vertical)
-                .lineLimit(1...4)
-                .textFieldStyle(.roundedBorder)
-            Button {
-                Task { await send() }
+        HStack(alignment: .bottom, spacing: 8) {
+            Menu {
+                Button { showPhotoPicker = true } label: { Label("Photo", systemImage: "photo") }
+                Button { showLocationPicker = true } label: { Label("Location", systemImage: "mappin.and.ellipse") }
             } label: {
-                Image(systemName: "arrow.up.circle.fill").font(.title2)
+                Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(.secondary)
             }
-            .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(sending)
+
+            TextField("Message…", text: $draft, axis: .vertical)
+                .lineLimit(2...6)
+                .textFieldStyle(.roundedBorder)
+
+            if sending {
+                ProgressView().frame(width: 28)
+            } else {
+                Button {
+                    Task { await send() }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill").font(.title2)
+                }
+                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
         }
         .padding(10)
         .background(.bar)
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task { await sendImage(item) }
+        }
+        .sheet(isPresented: $showLocationPicker) {
+            LocationPickerView(initial: defaultCoordinate) { picked in
+                Task { await sendLocation(picked) }
+            }
+        }
+    }
+
+    private var defaultCoordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: 49.22, longitude: -122.95) // Metro Vancouver
     }
 
     private func loadMessages() async {
@@ -404,6 +501,32 @@ struct RequestThreadView: View {
         if ok { draft = ""; await loadMessages() }
     }
 
+    /// Send a photo: compress, upload to storage, then send its URL as the message.
+    private func sendImage(_ item: PhotosPickerItem) async {
+        guard let uid = appState.userId else { return }
+        sending = true
+        defer { sending = false; photoItem = nil }
+        guard let raw = try? await item.loadTransferable(type: Data.self) else { return }
+        let data = UIImage(data: raw)?.jpegResized(maxDimension: 1280, quality: 0.8) ?? raw
+        guard let url = await appState.load({ try await $0.uploadImage(data, contentType: "image/jpeg", ext: "jpg", userId: uid) }) else { return }
+        let ok = await appState.perform { try await $0.sendMessage(requestId: request.id, text: url, senderId: uid) }
+        if ok { await loadMessages() }
+    }
+
+    /// Send a map-picked location as a tappable Apple Maps link.
+    private func sendLocation(_ picked: PickedLocation) async {
+        guard let uid = appState.userId else { return }
+        let lat = picked.coordinate.latitude, lng = picked.coordinate.longitude
+        let candidates = [picked.area, picked.city].compactMap { $0 }.filter { !$0.isEmpty }
+        let place = candidates.first ?? "Shared location"
+        let q = place.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let text = "📍 \(place)\nhttps://maps.apple.com/?ll=\(lat),\(lng)&q=\(q)"
+        sending = true
+        defer { sending = false }
+        let ok = await appState.perform { try await $0.sendMessage(requestId: request.id, text: text, senderId: uid) }
+        if ok { await loadMessages() }
+    }
+
     private func setStatus(_ newStatus: String) async {
         let ok = await appState.perform { try await $0.updateRequestStatus(id: request.id, status: newStatus) }
         if ok { status = newStatus }
@@ -417,12 +540,65 @@ private struct MessageBubble: View {
     var body: some View {
         HStack {
             if mine { Spacer(minLength: 40) }
-            Text(message.text)
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(mine ? Theme.accent : Color(.secondarySystemFill),
-                            in: RoundedRectangle(cornerRadius: 14))
-                .foregroundStyle(mine ? .white : .primary)
+            content
             if !mine { Spacer(minLength: 40) }
         }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let img = imageURL {
+            AsyncImage(url: img) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFit()
+                } else if phase.error != nil {
+                    textBubble
+                } else {
+                    ProgressView().frame(width: 160, height: 120)
+                }
+            }
+            .frame(maxWidth: 220, maxHeight: 260)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        } else if let loc = locationLink {
+            Link(destination: loc.url) {
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.circle.fill")
+                    Text(loc.label).font(.subheadline).lineLimit(2)
+                    Image(systemName: "arrow.up.right.square").font(.caption2)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(mine ? Theme.accent : Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 14))
+                .foregroundStyle(mine ? .white : .primary)
+            }
+        } else {
+            textBubble
+        }
+    }
+
+    private var textBubble: some View {
+        Text(message.text)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(mine ? Theme.accent : Color(.secondarySystemFill),
+                        in: RoundedRectangle(cornerRadius: 14))
+            .foregroundStyle(mine ? .white : .primary)
+    }
+
+    /// A message whose text is one of our uploaded image URLs → render the image.
+    private var imageURL: URL? {
+        let t = message.text.lowercased()
+        guard t.contains("/storage/v1/object/public/"),
+              t.hasSuffix(".jpg") || t.hasSuffix(".jpeg") || t.hasSuffix(".png"),
+              let u = URL(string: message.text) else { return nil }
+        return u
+    }
+
+    /// A message carrying an Apple Maps link → render a tappable location chip.
+    private var locationLink: (label: String, url: URL)? {
+        guard let r = message.text.range(of: "https://maps.apple.com/") else { return nil }
+        let urlStr = String(message.text[r.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let u = URL(string: urlStr) else { return nil }
+        let label = message.text[..<r.lowerBound]
+            .replacingOccurrences(of: "📍", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (label.isEmpty ? "View location" : label, u)
     }
 }

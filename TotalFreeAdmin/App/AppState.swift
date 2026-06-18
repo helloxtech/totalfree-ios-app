@@ -19,6 +19,12 @@ final class AppState: ObservableObject {
     @Published private(set) var perms: Set<String> = []
     @Published private(set) var moderationCount = 0
     @Published private(set) var reportsCount = 0
+    @Published private(set) var myPostsActionableCount = 0
+
+    /// Notification types that belong to a conversation. These are surfaced in the
+    /// Messages tab (and its badge), never in the Alerts feed — mirrors the web app's
+    /// `CONVERSATION_TYPES` so a new message doesn't double-count in both places.
+    static let conversationTypes: Set<String> = ["request_new", "request_update", "message_new"]
     @Published var isBusy = false
     @Published var alertMessage: String?
     @Published var infoMessage: String?
@@ -45,6 +51,14 @@ final class AppState: ObservableObject {
     var canSeeStaffArea: Bool { Perm.staffArea.contains { perms.contains($0) } }
     /// "Admin" for people who can manage users/roles; otherwise "Manage".
     var staffAreaTitle: String { (can(Perm.userManage) || can(Perm.roleManage)) ? "Admin" : "Manage" }
+
+    /// Security-role label derived from EFFECTIVE PERMISSIONS (the source of truth;
+    /// account type carries no authority). Shown on the Account screen.
+    var securityRoleLabel: String {
+        if can(Perm.roleManage) || can(Perm.userManage) { return "Admin" }
+        if can(Perm.listingReview) || can(Perm.reportResolve) { return "Moderator" }
+        return "Member"
+    }
     var displayName: String { profile?.name ?? session?.user?.displayName ?? "Neighbour" }
 
     // MARK: - Session lifecycle
@@ -99,6 +113,7 @@ final class AppState: ObservableObject {
         perms = []
         moderationCount = 0
         reportsCount = 0
+        myPostsActionableCount = 0
     }
 
     private func applySession(_ s: AuthSession) async {
@@ -112,6 +127,7 @@ final class AppState: ObservableObject {
         await loadPerms()
         await refreshNotifications()
         await refreshStaffCounts()
+        await refreshMyPostsCount()
         await PushNotificationService.shared.requestAuthorizationAndRegister()
         await PushNotificationService.shared.registerStoredTokenIfAvailable()
     }
@@ -135,13 +151,25 @@ final class AppState: ObservableObject {
         reportsCount = can(Perm.reportResolve) ? ((try? await client().countOpenReports()) ?? reportsCount) : 0
     }
 
+    /// Count of the member's own posts needing attention — drives the My Posts tab badge.
+    func refreshMyPostsCount() async {
+        guard let uid = userId else { myPostsActionableCount = 0; return }
+        myPostsActionableCount = (try? await client().countMyActionableListings(ownerId: uid)) ?? myPostsActionableCount
+    }
+
     // MARK: - Notifications
+
+    /// Alerts shown in the bell feed — everything that isn't a conversation event.
+    /// Conversation events live in the Messages tab instead.
+    var alertNotifications: [AppNotification] {
+        notifications.filter { !Self.conversationTypes.contains($0.type) }
+    }
 
     func refreshNotifications() async {
         guard let uid = userId else { return }
         if let list = try? await client().fetchNotifications(userId: uid) {
             notifications = list
-            unreadCount = list.filter { !$0.read }.count
+            unreadCount = list.filter { !$0.read && !Self.conversationTypes.contains($0.type) }.count
         }
     }
 
@@ -152,19 +180,30 @@ final class AppState: ObservableObject {
 
     func deleteNotification(_ id: String) async {
         notifications.removeAll { $0.id == id }
-        unreadCount = notifications.filter { !$0.read }.count
+        unreadCount = notifications.filter { !$0.read && !Self.conversationTypes.contains($0.type) }.count
         await perform { try await $0.deleteNotification(id: id) }
     }
 
-    func markAllNotificationsRead() async {
-        guard let uid = userId else { return }
-        await perform { try await $0.markAllNotificationsRead(userId: uid) }
+    /// Mark every unread *alert* (non-conversation) notification read, leaving
+    /// conversation unreads — and the Messages badge — untouched.
+    func markAllAlertsRead() async {
+        let ids = alertNotifications.filter { !$0.read }.map { $0.id }
+        guard !ids.isEmpty else { return }
+        for id in ids { _ = await perform { try await $0.markNotificationRead(id: id) } }
         await refreshNotifications()
     }
 
     /// Unread alerts that relate to conversations — drives the Messages tab badge.
     var messagesUnreadCount: Int {
-        notifications.filter { !$0.read && ["message_new", "request_new", "request_update"].contains($0.type) }.count
+        notifications.filter { !$0.read && Self.conversationTypes.contains($0.type) }.count
+    }
+
+    /// Whether a specific conversation (request thread) has unread activity.
+    func conversationHasUnread(_ requestId: String?) -> Bool {
+        guard let requestId else { return false }
+        return notifications.contains {
+            !$0.read && $0.targetRequestId == requestId && Self.conversationTypes.contains($0.type)
+        }
     }
 
     /// Clear conversation alerts for one request when its thread is opened.

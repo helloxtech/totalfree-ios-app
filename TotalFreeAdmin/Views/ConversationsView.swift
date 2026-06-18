@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Read any conversation (every request thread). Gated by message.read.any; RLS
-/// lets staff read all requests/messages but not send (the thread opens read-only).
+/// Staff message oversight — read any conversation (every request thread). Gated by
+/// message.read.any; RLS lets staff read all requests/messages but not send (the
+/// thread opens read-only). Distinct from the member-facing Messages tab.
 struct ConversationsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var requests: [AppRequest] = []
@@ -36,7 +37,7 @@ struct ConversationsView: View {
                 .listStyle(.plain)
             }
         }
-        .navigationTitle("Conversations")
+        .navigationTitle("Message oversight")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }
         .task { await reload() }

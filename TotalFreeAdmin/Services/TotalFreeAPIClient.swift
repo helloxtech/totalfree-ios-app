@@ -166,6 +166,32 @@ struct SupabaseClient {
         return "\(baseURL.absoluteString)/storage/v1/object/public/listing-media/\(path)"
     }
 
+    /// Uploads (or replaces) the user's avatar at `{userId}/avatar` in the public
+    /// `avatars` bucket and returns its public URL with a cache-busting suffix.
+    /// Mirrors the web app's `uploadAvatar`.
+    func uploadAvatar(_ data: Data, userId: String) async throws -> String {
+        let path = "\(userId)/avatar"
+        guard let url = URL(string: "/storage/v1/object/avatars/\(path)", relativeTo: baseURL) else {
+            throw SupabaseError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken ?? apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue("true", forHTTPHeaderField: "x-upsert")   // replace existing avatar
+        request.httpBody = data
+
+        let (respData, response) = try await urlSession.upload(for: request, from: data)
+        guard let http = response as? HTTPURLResponse else { throw SupabaseError.noResponse }
+        guard 200..<300 ~= http.statusCode else {
+            if http.statusCode == 401 { throw SupabaseError.unauthorized }
+            if http.statusCode == 403 { throw SupabaseError.forbidden }
+            throw SupabaseError.server(Self.errorMessage(from: respData, status: http.statusCode))
+        }
+        return "\(baseURL.absoluteString)/storage/v1/object/public/avatars/\(path)?t=\(Int(Date().timeIntervalSince1970))"
+    }
+
     /// Exact row count via PostgREST's Content-Range header (cheap; fetches no rows).
     func count(_ pathWithQuery: String) async throws -> Int {
         guard let url = URL(string: pathWithQuery, relativeTo: baseURL) else { throw SupabaseError.invalidURL }

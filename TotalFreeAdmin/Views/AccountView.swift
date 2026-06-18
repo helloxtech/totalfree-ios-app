@@ -1,10 +1,14 @@
 import SwiftUI
+import PhotosUI
+import UIKit
 
 struct AccountView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showAuth = false
     @State private var editingName = false
     @State private var nameDraft = ""
+    @State private var avatarItem: PhotosPickerItem?
+    @State private var uploadingAvatar = false
 
     var body: some View {
         NavigationStack {
@@ -29,16 +33,27 @@ struct AccountView: View {
         List {
             Section {
                 HStack(spacing: 14) {
-                    ZStack {
-                        Circle().fill(Theme.accent.opacity(0.15)).frame(width: 56, height: 56)
-                        Text(initials).font(.title3.bold()).foregroundStyle(Theme.accent)
+                    PhotosPicker(selection: $avatarItem, matching: .images) {
+                        ZStack(alignment: .bottomTrailing) {
+                            avatarCircle
+                            if uploadingAvatar {
+                                ProgressView()
+                                    .frame(width: 56, height: 56)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 11)).foregroundStyle(.white)
+                                .padding(5).background(Theme.accent, in: Circle())
+                                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                        }
                     }
+                    .buttonStyle(.plain)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(appState.displayName).font(.headline)
                         Text(appState.session?.user?.email ?? "")
                             .font(.caption).foregroundStyle(.secondary)
                         HStack(spacing: 6) {
-                            Text(appState.role.label)
+                            Text(appState.securityRoleLabel)
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 8).padding(.vertical, 2)
                                 .background(Theme.accent.opacity(0.15), in: Capsule())
@@ -55,6 +70,10 @@ struct AccountView: View {
                     Spacer()
                 }
                 .padding(.vertical, 4)
+                .onChange(of: avatarItem) { _, item in
+                    guard let item else { return }
+                    Task { await uploadAvatar(item) }
+                }
             }
 
             Section("Profile") {
@@ -100,6 +119,40 @@ struct AccountView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    @ViewBuilder
+    private var avatarCircle: some View {
+        if let urlStr = appState.profile?.avatarUrl, let url = URL(string: urlStr) {
+            AsyncImage(url: url) { phase in
+                if let img = phase.image { img.resizable().scaledToFill() }
+                else { initialsCircle }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(Circle())
+        } else {
+            initialsCircle
+        }
+    }
+
+    private var initialsCircle: some View {
+        ZStack {
+            Circle().fill(Theme.accent.opacity(0.15)).frame(width: 56, height: 56)
+            Text(initials).font(.title3.bold()).foregroundStyle(Theme.accent)
+        }
+    }
+
+    private func uploadAvatar(_ item: PhotosPickerItem) async {
+        guard let uid = appState.userId else { return }
+        uploadingAvatar = true
+        defer { uploadingAvatar = false; avatarItem = nil }
+        guard let raw = try? await item.loadTransferable(type: Data.self) else { return }
+        let data = UIImage(data: raw)?.jpegResized(maxDimension: 512, quality: 0.85) ?? raw
+        let ok = await appState.perform { client in
+            let url = try await client.uploadAvatar(data, userId: uid)
+            try await client.updateProfileAvatar(userId: uid, url: url)
+        }
+        if ok { await appState.loadProfile() }
     }
 
     private var initials: String {

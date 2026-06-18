@@ -406,6 +406,7 @@ struct RequestStatusUpdate: Encodable { let status: String }
 struct ReportResolveUpdate: Encodable { let status: String; let reviewed_at: String }
 struct NotificationReadUpdate: Encodable { let read: Bool }
 struct ProfileNameUpdate: Encodable { let name: String }
+struct ProfileAvatarUpdate: Encodable { let avatar_url: String }
 
 struct ModerateListingParams: Encodable { let p_id: String; let p_status: String }
 struct SetUserRoleParams: Encodable { let target: String; let new_role: String }

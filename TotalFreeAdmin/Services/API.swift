@@ -197,6 +197,10 @@ extension SupabaseClient {
         try await restPatchNoReturn("/rest/v1/profiles?id=eq.\(userId)", body: ProfileNameUpdate(name: name))
     }
 
+    func updateProfileAvatar(userId: String, url: String) async throws {
+        try await restPatchNoReturn("/rest/v1/profiles?id=eq.\(userId)", body: ProfileAvatarUpdate(avatar_url: url))
+    }
+
     // MARK: Admin users (Owner — set_user_role gated in SQL)
 
     func adminListUsers() async throws -> [AdminUserRow] {
@@ -330,6 +334,11 @@ extension SupabaseClient {
 
     func countOpenReports() async throws -> Int {
         try await count("/rest/v1/reports?status=eq.open")
+    }
+
+    /// Count of the member's own posts that need their attention (rejected → edit & resubmit).
+    func countMyActionableListings(ownerId: String) async throws -> Int {
+        try await count("/rest/v1/listings?owner_id=eq.\(ownerId)&status=eq.rejected")
     }
 }
 

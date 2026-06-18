@@ -21,13 +21,12 @@ struct ModerationView: View {
                         } label: {
                             ListingCard(listing: listing)
                         }
+                        // Quick reject stays; approving goes through the detail
+                        // view so the moderator works the review checklist first.
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button { Task { await moderate(listing, "rejected") } } label: {
                                 Label("Reject", systemImage: "xmark")
                             }.tint(.red)
-                            Button { Task { await moderate(listing, "active") } } label: {
-                                Label("Approve", systemImage: "checkmark")
-                            }.tint(.green)
                         }
                     }
                 }
@@ -57,7 +56,25 @@ struct ModerationView: View {
     }
 }
 
-/// Full preview of a pending listing with Approve / Reject.
+/// The moderator's review checklist — mirrors the web app's CHECK_ITEMS so both
+/// platforms approve against the same bar.
+// Short, practical review checklists — different for give-aways vs requests.
+private let offerChecklist = [
+    "Actually free — no payment, fees, or donation",
+    "Safe and legal (not a prohibited item)",
+    "Photo looks appropriate (or there's none)",
+    "Real place in our area",
+    "Not spam or a duplicate",
+]
+private let wantedChecklist = [
+    "A genuine need — not buying or reselling",
+    "Safe and legal item to ask for",
+    "Respectful and reasonable",
+    "Real place in our area",
+    "Not spam or a duplicate",
+]
+
+/// Full preview of a pending listing with a review checklist + Approve / Reject.
 struct ModerationDetailView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -67,6 +84,11 @@ struct ModerationDetailView: View {
     @State private var confirmReject = false
     @State private var working = false
     @State private var showEdit = false
+    @State private var checks = [Bool](repeating: false, count: 5)
+
+    /// Give-aways and requests are reviewed against different criteria.
+    private var checklist: [String] { listing.isWanted ? wantedChecklist : offerChecklist }
+    private var allChecked: Bool { checks.allSatisfy { $0 } }
 
     var body: some View {
         ScrollView {
@@ -95,6 +117,23 @@ struct ModerationDetailView: View {
                 if !listing.description.isEmpty { Text(listing.description) }
                 Text("Posted by \(listing.ownerName ?? "a member") · \(relativeDate(listing.createdAt))")
                     .font(.caption).foregroundStyle(.secondary)
+
+                Divider().padding(.vertical, 4)
+                Text("Review checklist").font(.subheadline.bold())
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(checklist.indices, id: \.self) { i in
+                        Button { checks[i].toggle() } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: checks[i] ? "checkmark.square.fill" : "square")
+                                    .foregroundStyle(checks[i] ? Theme.accent : .secondary)
+                                Text(checklist[i]).font(.subheadline).foregroundStyle(.primary)
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
             .padding()
         }
@@ -117,9 +156,10 @@ struct ModerationDetailView: View {
                 }
                 .buttonStyle(.bordered)
                 Button { Task { await moderate("active") } } label: {
-                    Label("Approve", systemImage: "checkmark").frame(maxWidth: .infinity)
+                    Label(allChecked ? "Approve" : "Check all to approve", systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!allChecked)
             }
             .padding()
             .background(.bar)

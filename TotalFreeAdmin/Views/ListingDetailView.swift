@@ -114,6 +114,11 @@ struct ListingDetailView: View {
         }
         .task { await refresh() }
         .task { await geocodeIfNeeded() }
+        .onChange(of: listing.status) { _, _ in
+            // Resubmitting or withdrawing a rejected post should clear the My Posts
+            // tab badge right away, not on next app launch.
+            Task { await appState.refreshMyPostsCount() }
+        }
     }
 
     // MARK: Photo gallery
@@ -212,6 +217,11 @@ struct ListingDetailView: View {
             if listing.status == "pending_review" {
                 Button { Task { await setStatus("removed") } } label: { Label("Withdraw", systemImage: "arrow.uturn.backward") }
             }
+            if listing.status == "rejected" {
+                // Archive a rejected post: hide it (clears the My Posts badge) without
+                // deleting. It stays under Closed and can still be edited & resubmitted.
+                Button { Task { await archive() } } label: { Label("Archive", systemImage: "archivebox") }
+            }
             if listing.status == "active" {
                 Button { Task { await setStatus("completed") } } label: { Label("Mark completed", systemImage: "checkmark.circle") }
             }
@@ -301,10 +311,19 @@ struct ListingDetailView: View {
         }
     }
 
+    private func archive() async {
+        let ok = await appState.perform { try await $0.setListingStatus(id: listing.id, status: "removed") }
+        if ok {
+            appState.infoMessage = "Post archived — find it under Closed."
+            await refresh()
+        }
+    }
+
     private func deleteSelf() async {
         let ok = await appState.perform { try await $0.deleteListing(id: listing.id) }
         if ok {
             appState.infoMessage = "Listing deleted."
+            await appState.refreshMyPostsCount()
             dismiss()
         }
     }
