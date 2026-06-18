@@ -423,6 +423,33 @@ struct PasswordGrantBody: Encodable { let email: String; let password: String }
 struct RefreshTokenBody: Encodable { let refresh_token: String }
 struct SignUpBody: Encodable { let email: String; let password: String; let data: [String: String] }
 
+// MARK: - Contributor recognition (Good Neighbour levels)
+
+struct NeighbourLevel {
+    let name: String
+    let emoji: String
+    let min: Int
+    let next: (min: Int, name: String)?
+
+    /// Gifts = completed give-aways (handoffs). One source of truth, mirrored on web.
+    static let ladder: [(min: Int, name: String, emoji: String)] = [
+        (0, "New Neighbour", "👋"),
+        (1, "Kind Neighbour", "🌱"),
+        (5, "Good Neighbour", "🤝"),
+        (15, "Generous Neighbour", "🎁"),
+        (40, "Neighbourhood Champion", "🏅"),
+        (100, "Local Legend", "🌟"),
+    ]
+
+    static func forGifts(_ gifts: Int) -> NeighbourLevel {
+        var idx = 0
+        for (i, t) in ladder.enumerated() where gifts >= t.min { idx = i }
+        let cur = ladder[idx]
+        let nxt: (min: Int, name: String)? = idx + 1 < ladder.count ? (ladder[idx + 1].min, ladder[idx + 1].name) : nil
+        return NeighbourLevel(name: cur.name, emoji: cur.emoji, min: cur.min, next: nxt)
+    }
+}
+
 // MARK: - Lightweight JSON value (for user_metadata decoding)
 
 enum JSONValue: Codable {

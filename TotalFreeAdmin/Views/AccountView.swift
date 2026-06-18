@@ -76,6 +76,26 @@ struct AccountView: View {
                 }
             }
 
+            Section("Your impact") {
+                HStack(spacing: 14) {
+                    Text(level.emoji).font(.system(size: 40))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(level.name).font(.headline)
+                        Text("\(appState.giftsGiven) gift\(appState.giftsGiven == 1 ? "" : "s") given")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let next = level.next {
+                            ProgressView(value: Double(appState.giftsGiven - level.min), total: Double(max(1, next.min - level.min)))
+                                .tint(Theme.accent)
+                            Text("\(max(0, next.min - appState.giftsGiven)) more to \(next.name)")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        } else {
+                            Text("Top level — thank you! 💚").font(.caption2).foregroundStyle(Theme.accent)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
             Section("Profile") {
                 Button {
                     nameDraft = appState.profile?.name ?? ""
@@ -119,6 +139,7 @@ struct AccountView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .task { await appState.refreshGifts() }
     }
 
     @ViewBuilder
@@ -154,6 +175,8 @@ struct AccountView: View {
         }
         if ok { await appState.loadProfile() }
     }
+
+    private var level: NeighbourLevel { NeighbourLevel.forGifts(appState.giftsGiven) }
 
     private var initials: String {
         let parts = appState.displayName.split(separator: " ")

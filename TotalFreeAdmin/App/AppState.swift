@@ -20,6 +20,7 @@ final class AppState: ObservableObject {
     @Published private(set) var moderationCount = 0
     @Published private(set) var reportsCount = 0
     @Published private(set) var myPostsActionableCount = 0
+    @Published private(set) var giftsGiven = 0
 
     /// Notification types that belong to a conversation. These are surfaced in the
     /// Messages tab (and its badge), never in the Alerts feed — mirrors the web app's
@@ -114,6 +115,7 @@ final class AppState: ObservableObject {
         moderationCount = 0
         reportsCount = 0
         myPostsActionableCount = 0
+        giftsGiven = 0
     }
 
     private func applySession(_ s: AuthSession) async {
@@ -128,6 +130,7 @@ final class AppState: ObservableObject {
         await refreshNotifications()
         await refreshStaffCounts()
         await refreshMyPostsCount()
+        await refreshGifts()
         await PushNotificationService.shared.requestAuthorizationAndRegister()
         await PushNotificationService.shared.registerStoredTokenIfAvailable()
     }
@@ -155,6 +158,12 @@ final class AppState: ObservableObject {
     func refreshMyPostsCount() async {
         guard let uid = userId else { myPostsActionableCount = 0; return }
         myPostsActionableCount = (try? await client().countMyActionableListings(ownerId: uid)) ?? myPostsActionableCount
+    }
+
+    /// Completed gifts → the person's Good Neighbour level (shown on Account).
+    func refreshGifts() async {
+        guard let uid = userId else { giftsGiven = 0; return }
+        giftsGiven = (try? await client().countMyGifts(ownerId: uid)) ?? giftsGiven
     }
 
     // MARK: - Notifications

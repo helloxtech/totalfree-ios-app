@@ -82,6 +82,7 @@ struct StatusBadge: View {
         case "active": "Active"
         case "rejected": "Rejected"
         case "removed": "Removed"
+        case "archived": "Archived"
         case "claimed": "Claimed"
         case "completed": "Completed"
         case "open": "Open"

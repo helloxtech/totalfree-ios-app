@@ -108,11 +108,11 @@ struct BrowseView: View {
         // map's location button (which lives top-right); in list mode it stays right.
         ZStack(alignment: showMap ? .topLeading : .topTrailing) {
             Group {
-                if loading && listings.isEmpty {
+                if showMap {
+                    BrowseMapView(query: query, category: category, sourceType: sourceType, kind: kind, selection: $mapSelection)
+                } else if loading && listings.isEmpty {
                     ProgressView("Finding free things…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if showMap {
-                    BrowseMapView(listings: listings, selection: $mapSelection)
                 } else if listings.isEmpty {
                     EmptyState(
                         title: "Nothing here yet",
@@ -205,50 +205,103 @@ final class LocationProvider: NSObject, ObservableObject {
     }
 }
 
-/// Map of the current browse results. Pins for neighbour ("totalfree") posts are
-/// deterministically jittered (~200m) so a private home is never pinpointed;
-/// organization/business listings keep their exact location.
+/// Map of free items by area. Loads pins for the visible region (not the
+/// paginated list), with a "Search this area" button when the map moves — so we
+/// only fetch what's on screen. Neighbour ("totalfree") pins are deterministically
+/// jittered (~200m) for privacy; organization/business pins are exact.
 private struct BrowseMapView: View {
-    let listings: [Listing]
+    @EnvironmentObject private var appState: AppState
+    let query: String
+    let category: String
+    let sourceType: String
+    let kind: String
     @Binding var selection: Listing?
-    @StateObject private var location = LocationProvider()
 
-    private var mappable: [Listing] { listings.filter { $0.lat != nil && $0.lng != nil } }
+    @StateObject private var location = LocationProvider()
+    @State private var pins: [Listing] = []
+    @State private var region = BrowseMapView.defaultRegion
+    @State private var didInitialSearch = false
+    @State private var showSearchArea = false
+    @State private var loading = false
+
+    static let defaultRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 49.22, longitude: -122.95),   // Metro Vancouver
+        span: MKCoordinateSpan(latitudeDelta: 0.6, longitudeDelta: 0.9)
+    )
 
     var body: some View {
-        if mappable.isEmpty {
-            EmptyState(
-                title: "No map pins here",
-                message: "These results don't have map locations yet. Switch back to List to see them.",
-                systemImage: "mappin.slash"
-            )
-        } else {
-            Map(initialPosition: .automatic) {
-                UserAnnotation()
-                ForEach(mappable) { listing in
-                    Annotation(listing.title, coordinate: coordinate(for: listing)) {
-                        Button { selection = listing } label: { pin(for: listing) }
-                            .buttonStyle(.plain)
-                    }
-                }
-            }
-            .mapControls {
-                MapUserLocationButton()   // the "locate me" button
-                MapCompass()
-            }
-            .mapStyle(.standard(pointsOfInterest: .excludingAll))
-            .ignoresSafeArea(edges: .bottom)
-            .onAppear { location.requestWhenInUse() }
-            .overlay(alignment: .bottom) {
-                if mappable.count < listings.count {
-                    Text("\(mappable.count) of \(listings.count) results have a map location")
-                        .font(.caption2)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .padding(.bottom, 12)
+        Map(initialPosition: .region(BrowseMapView.defaultRegion)) {
+            UserAnnotation()
+            ForEach(pins) { listing in
+                Annotation(listing.title, coordinate: coordinate(for: listing)) {
+                    Button { selection = listing } label: { pin(for: listing) }
+                        .buttonStyle(.plain)
                 }
             }
         }
+        .mapControls {
+            MapUserLocationButton()   // the "locate me" button
+            MapCompass()
+        }
+        .mapStyle(.standard(pointsOfInterest: .excludingAll))
+        .ignoresSafeArea(edges: .bottom)
+        .onAppear { location.requestWhenInUse() }
+        .onMapCameraChange(frequency: .onEnd) { ctx in
+            region = ctx.region
+            if !didInitialSearch {
+                didInitialSearch = true
+                Task { await searchArea(ctx.region) }
+            } else {
+                showSearchArea = true   // user moved the map → offer a re-search
+            }
+        }
+        // Discrete filters re-search the visible area immediately; a typed query
+        // just surfaces the button (so we don't fire a request per keystroke).
+        .onChange(of: category) { _, _ in if didInitialSearch { Task { await searchArea(region) } } }
+        .onChange(of: sourceType) { _, _ in if didInitialSearch { Task { await searchArea(region) } } }
+        .onChange(of: kind) { _, _ in if didInitialSearch { Task { await searchArea(region) } } }
+        .onChange(of: query) { _, _ in if didInitialSearch { showSearchArea = true } }
+        .overlay(alignment: .top) {
+            if showSearchArea {
+                Button { Task { await searchArea(region) } } label: {
+                    Label(loading ? "Searching…" : "Search this area", systemImage: "arrow.clockwise")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Color(.separator)))
+                        .shadow(radius: 3)
+                }
+                .buttonStyle(.plain)
+                .disabled(loading)
+                .padding(.top, 10)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if didInitialSearch && !loading && pins.isEmpty {
+                Text("No free items in this area — try moving the map.")
+                    .font(.caption)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 12)
+            }
+        }
+    }
+
+    private func searchArea(_ region: MKCoordinateRegion) async {
+        loading = true
+        showSearchArea = false
+        defer { loading = false }
+        let minLat = region.center.latitude - region.span.latitudeDelta / 2
+        let maxLat = region.center.latitude + region.span.latitudeDelta / 2
+        let minLng = region.center.longitude - region.span.longitudeDelta / 2
+        let maxLng = region.center.longitude + region.span.longitudeDelta / 2
+        let result = await appState.load {
+            try await $0.searchListingsInBounds(
+                minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng,
+                text: query, category: category, sourceType: sourceType, kind: kind, limit: 300
+            )
+        }
+        if let result { pins = result }
     }
 
     private func pin(for listing: Listing) -> some View {

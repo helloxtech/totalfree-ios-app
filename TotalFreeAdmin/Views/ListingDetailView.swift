@@ -211,7 +211,7 @@ struct ListingDetailView: View {
                 Button {
                     showEdit = true
                 } label: {
-                    Label(listing.status == "rejected" ? "Edit & resubmit" : "Edit", systemImage: "pencil")
+                    Label((listing.status == "rejected" || listing.status == "archived") ? "Edit & resubmit" : "Edit", systemImage: "pencil")
                 }
             }
             if listing.status == "pending_review" {
@@ -283,6 +283,7 @@ struct ListingDetailView: View {
         case "active": "This is your listing"
         case "completed": "Marked completed"
         case "removed": "Withdrawn"
+        case "archived": "Archived"
         default: "Your listing"
         }
     }
@@ -291,6 +292,7 @@ struct ListingDetailView: View {
         case "pending_review": "A moderator will review it soon. Use the ⋯ menu to edit or withdraw it."
         case "rejected": "Tap ⋯ → Edit & resubmit to fix it and send it back for review."
         case "active": "You'll get an alert when a neighbour requests it. Use ⋯ to manage it."
+        case "archived": "Hidden from your active posts. Tap ⋯ → Edit & resubmit to send it back for review, or delete it."
         default: "Use the ⋯ menu to manage this post."
         }
     }
@@ -312,7 +314,7 @@ struct ListingDetailView: View {
     }
 
     private func archive() async {
-        let ok = await appState.perform { try await $0.setListingStatus(id: listing.id, status: "removed") }
+        let ok = await appState.perform { try await $0.setListingStatus(id: listing.id, status: "archived") }
         if ok {
             appState.infoMessage = "Post archived — find it under Closed."
             await refresh()

@@ -133,7 +133,7 @@ struct MyStuffView: View {
         switch statusFilter {
         case "active": return listings.filter { $0.status == "active" }
         case "pending_review": return listings.filter { $0.status == "pending_review" }
-        case "closed": return listings.filter { ["rejected", "removed", "completed"].contains($0.status) }
+        case "closed": return listings.filter { ["rejected", "removed", "completed", "archived"].contains($0.status) }
         default: return listings
         }
     }

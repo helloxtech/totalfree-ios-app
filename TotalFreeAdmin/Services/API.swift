@@ -42,6 +42,28 @@ extension SupabaseClient {
         return try await restGet(q, as: [Listing].self)
     }
 
+    /// Listings with coordinates inside a map viewport (lat/lng box), with the
+    /// same filters as browse. Powers the map's "Search this area" so we fetch
+    /// only what's on screen instead of the paginated list.
+    func searchListingsInBounds(
+        minLat: Double, maxLat: Double, minLng: Double, maxLng: Double,
+        text: String = "", category: String = "", sourceType: String = "", kind: String = "",
+        limit: Int = 300
+    ) async throws -> [Listing] {
+        var q = "/rest/v1/listings?select=\(listingSelect)&status=eq.active"
+        q += "&lat=gte.\(minLat)&lat=lte.\(maxLat)&lng=gte.\(minLng)&lng=lte.\(maxLng)"
+        q += "&order=created_at.desc&limit=\(limit)"
+        if !category.isEmpty { q += "&category=eq.\(category)" }
+        if !sourceType.isEmpty { q += "&source_type=eq.\(sourceType)" }
+        if !kind.isEmpty { q += "&listing_kind=eq.\(kind)" }
+        let s = text.pgSanitized
+        if !s.isEmpty {
+            let e = s.pgEncoded
+            q += "&or=(title.ilike.*\(e)*,description.ilike.*\(e)*,source_label.ilike.*\(e)*,area.ilike.*\(e)*)"
+        }
+        return try await restGet(q, as: [Listing].self)
+    }
+
     func fetchListing(id: String) async throws -> Listing? {
         let rows = try await restGet("/rest/v1/listings?select=\(listingSelect)&id=eq.\(id)&limit=1", as: [Listing].self)
         return rows.first
@@ -339,6 +361,11 @@ extension SupabaseClient {
     /// Count of the member's own posts that need their attention (rejected → edit & resubmit).
     func countMyActionableListings(ownerId: String) async throws -> Int {
         try await count("/rest/v1/listings?owner_id=eq.\(ownerId)&status=eq.rejected")
+    }
+
+    /// Completed give-aways (handoffs) by this user — drives their Good Neighbour level.
+    func countMyGifts(ownerId: String) async throws -> Int {
+        try await count("/rest/v1/requests?status=eq.completed&owner_id=eq.\(ownerId)")
     }
 }
 
