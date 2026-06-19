@@ -155,6 +155,7 @@ struct Listing: Codable, Identifiable, Equatable {
 
 struct ListingRef: Codable, Equatable {
     let title: String?
+    let publicId: Int?
     let imageUrl: String?
     let category: String?
     let sourceType: String?
@@ -329,18 +330,56 @@ struct Sponsor: Codable, Identifiable, Equatable {
 struct OrgClaim: Codable, Identifiable, Equatable {
     let id: String
     let userId: String
+    let claimantName: String?
+    let claimantEmail: String?
+    let claimantEmailDomain: String?
     let listingId: String?
+    let listingTitle: String?
+    let listingPublicId: Int?
+    let listingSourceType: String?
+    let listingSourceLabel: String?
+    let listingExternalUrl: String?
+    let listingDomain: String?
     let orgName: String?
     let website: String?
+    let websiteDomain: String?
     let kind: String
     let note: String?
     let status: String
     let createdAt: String?
+    let reviewedAt: String?
     let listings: ListingRef?
     let profiles: OwnerRef?
 
-    var who: String { profiles?.name ?? "A member" }
-    var what: String { orgName ?? listings?.title ?? website ?? "an organization" }
+    var who: String { claimantName ?? profiles?.name ?? "A member" }
+    var email: String? { claimantEmail?.isEmpty == false ? claimantEmail : nil }
+    var emailDomain: String? { claimantEmailDomain?.isEmpty == false ? claimantEmailDomain : nil }
+    var referenceDomain: String? {
+        if let websiteDomain, !websiteDomain.isEmpty { return websiteDomain }
+        if let listingDomain, !listingDomain.isEmpty { return listingDomain }
+        return nil
+    }
+    var listingDisplay: String? {
+        let title = listingTitle ?? listings?.title
+        guard let title, !title.isEmpty else { return nil }
+        if let listingPublicId { return "TF-\(listingPublicId) · \(title)" }
+        if let publicId = listings?.publicId { return "TF-\(publicId) · \(title)" }
+        return title
+    }
+    var what: String { orgName ?? listingTitle ?? listings?.title ?? website ?? "an organization" }
+    var typeLabel: String { kind == "register" ? "New organization" : "Listing claim" }
+    var domainStatus: String {
+        guard let emailDomain, let referenceDomain else { return "Needs evidence" }
+        return emailDomain == referenceDomain ? "Domain match" : "Manual check"
+    }
+    var hasDomainMatch: Bool {
+        guard let emailDomain, let referenceDomain else { return false }
+        return emailDomain == referenceDomain
+    }
+    var hasDomainMismatch: Bool {
+        guard let emailDomain, let referenceDomain else { return false }
+        return emailDomain != referenceDomain
+    }
 }
 
 struct CandidatePayload: Codable, Equatable {
