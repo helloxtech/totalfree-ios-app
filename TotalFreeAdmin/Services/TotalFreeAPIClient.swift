@@ -48,15 +48,6 @@ enum OAuthProvider: String, CaseIterable, Identifiable {
         }
     }
 
-    var systemImage: String {
-        switch self {
-        case .google: "g.circle"
-        case .apple: "apple.logo"
-        case .azure: "square.grid.2x2"
-        case .facebook: "f.circle"
-        }
-    }
-
     var scopes: String? {
         switch self {
         case .azure: "email"

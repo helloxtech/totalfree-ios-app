@@ -5,6 +5,7 @@
 ### Added
 
 - Google, Apple, Microsoft, and Facebook sign-in buttons on the native auth sheet.
+- Social sign-in rows now use provider logo assets instead of generic system icons.
 - App bundle metadata now uses the user-facing name `Total Free` instead of the
   internal target name in iOS permission prompts.
 - Mobile OAuth now starts at `https://totalfree.ca/auth/mobile-start`, so iOS

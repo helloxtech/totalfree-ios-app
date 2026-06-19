@@ -32,8 +32,7 @@ struct AuthView: View {
                             socialSignIn(provider)
                         } label: {
                             HStack {
-                                Image(systemName: provider.systemImage)
-                                    .frame(width: 22)
+                                ProviderLogo(provider: provider)
                                 Text(provider.label)
                                     .fontWeight(.semibold)
                                 Spacer()
@@ -117,6 +116,35 @@ struct AuthView: View {
                 )
             }
         }
+    }
+}
+
+private struct ProviderLogo: View {
+    let provider: OAuthProvider
+
+    var body: some View {
+        Image(provider.logoAssetName)
+            .renderingMode(provider.usesTemplateLogo ? .template : .original)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(.primary)
+            .frame(width: 22, height: 22)
+            .accessibilityHidden(true)
+    }
+}
+
+private extension OAuthProvider {
+    var logoAssetName: String {
+        switch self {
+        case .google: "AuthLogoGoogle"
+        case .apple: "AuthLogoApple"
+        case .azure: "AuthLogoMicrosoft"
+        case .facebook: "AuthLogoFacebook"
+        }
+    }
+
+    var usesTemplateLogo: Bool {
+        self == .apple
     }
 }
 
