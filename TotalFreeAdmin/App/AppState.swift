@@ -24,10 +24,10 @@ final class AppState: ObservableObject {
     @Published private(set) var entityKind = "Member"   // Member / Business / Organization
     @Published private(set) var badges: [AppBadge] = []
 
-    /// Notification types that belong to a conversation. These are surfaced in the
-    /// Messages tab (and its badge), never in the Alerts feed — mirrors the web app's
-    /// `CONVERSATION_TYPES` so a new message doesn't double-count in both places.
-    static let conversationTypes: Set<String> = ["request_new", "request_update", "message_new"]
+    /// Live conversation activity (a new request, a new chat message) belongs in the
+    /// Messages tab. Request status outcomes (accepted/declined/completed) are alerts
+    /// and stay in the Alerts feed. Mirrors the web app's `CONVERSATION_TYPES`.
+    static let conversationTypes: Set<String> = ["request_new", "message_new"]
     @Published var isBusy = false
     @Published var alertMessage: String?
     @Published var infoMessage: String?

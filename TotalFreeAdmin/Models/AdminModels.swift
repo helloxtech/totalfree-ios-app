@@ -237,6 +237,7 @@ struct AppNotification: Codable, Identifiable, Equatable {
         case "request_update": "Request update"
         case "message_new": "New message"
         case "listing_approved": "Post approved"
+        case "listing_rejected": "Post needs changes"
         case "sponsor_approved": "Business approved"
         case "match_found": "New match"
         default: title
@@ -249,6 +250,7 @@ struct AppNotification: Codable, Identifiable, Equatable {
         case "request_update": "arrow.triangle.2.circlepath"
         case "message_new": "bubble.left.and.bubble.right"
         case "listing_approved": "checkmark.seal"
+        case "listing_rejected": "exclamationmark.triangle"
         case "sponsor_approved": "building.2"
         case "match_found": "sparkles"
         default: "bell"
