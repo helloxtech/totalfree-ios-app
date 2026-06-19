@@ -335,6 +335,15 @@ extension SupabaseClient {
 
     // MARK: Org claims (claim.resolve)
 
+    func claimListing(id: String, orgName: String, website: String?, note: String?) async throws -> String {
+        try await rpcDecoded("claim_listing", params: ClaimListingParams(
+            p_listing: id,
+            p_org_name: orgName,
+            p_website: website ?? "",
+            p_note: note ?? ""
+        ), as: String.self)
+    }
+
     func fetchPendingClaims() async throws -> [OrgClaim] {
         try await rpcDecoded("admin_list_org_claims", params: EmptyParams(), as: [OrgClaim].self)
     }

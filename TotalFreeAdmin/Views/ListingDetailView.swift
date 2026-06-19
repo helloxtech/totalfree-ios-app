@@ -11,6 +11,7 @@ struct ListingDetailView: View {
     @State private var showReport = false
     @State private var showAuth = false
     @State private var showEdit = false
+    @State private var showClaim = false
     @State private var confirmDelete = false
     @State private var geocoded: CLLocationCoordinate2D?
 
@@ -24,6 +25,9 @@ struct ListingDetailView: View {
     }
     private var usesExternalSourceAction: Bool {
         listing.ownerId == nil && ["partner", "sponsored"].contains(listing.sourceType)
+    }
+    private var canClaim: Bool {
+        listing.ownerId == nil && ["partner", "external"].contains(listing.sourceType)
     }
 
     var body: some View {
@@ -103,6 +107,11 @@ struct ListingDetailView: View {
         .sheet(isPresented: $showRequest) { RequestSheet(listing: listing) }
         .sheet(isPresented: $showReport) { ReportSheet(listing: listing) }
         .sheet(isPresented: $showAuth) { AuthView() }
+        .sheet(isPresented: $showClaim) {
+            ClaimListingSheet(listing: listing) {
+                await refresh()
+            }
+        }
         .sheet(isPresented: $showEdit) {
             EditListingView(listing: listing, resubmitOnSave: true) { listing = $0 }
         }
@@ -272,6 +281,21 @@ struct ListingDetailView: View {
                 } label: {
                     Label("Report this listing", systemImage: "flag").font(.subheadline)
                 }
+
+                if canClaim {
+                    Button {
+                        if !appState.isAuthed {
+                            showAuth = true
+                        } else if !appState.isVerified {
+                            appState.infoMessage = "Please confirm your email before claiming an organization listing."
+                        } else {
+                            showClaim = true
+                        }
+                    } label: {
+                        Label("Are you this organization? Claim it", systemImage: "building.2.crop.circle")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
             }
         }
     }
@@ -327,6 +351,90 @@ struct ListingDetailView: View {
             appState.infoMessage = "Listing deleted."
             await appState.refreshMyPostsCount()
             dismiss()
+        }
+    }
+}
+
+// MARK: - Claim sheet
+
+private struct ClaimListingSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    let listing: Listing
+    var onSubmitted: () async -> Void
+
+    @State private var orgName: String
+    @State private var website: String
+    @State private var note = ""
+    @State private var sending = false
+
+    init(listing: Listing, onSubmitted: @escaping () async -> Void) {
+        self.listing = listing
+        self.onSubmitted = onSubmitted
+        _orgName = State(initialValue: listing.sourceLabel ?? "")
+        _website = State(initialValue: listing.externalUrl ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Organization name", text: $orgName)
+                        .textInputAutocapitalization(.words)
+                    TextField("Official website or program page", text: $website)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Your role, department, or proof", text: $note, axis: .vertical)
+                        .lineLimit(4...8)
+                } header: {
+                    Text("Claim details")
+                } footer: {
+                    Text("A matching work email may verify instantly. Otherwise moderators use these details to confirm you can manage this organization listing.")
+                }
+
+                Section {
+                    InfoCallout(
+                        title: "What happens next",
+                        message: "If the domain does not match, admins will compare your organization name, website, note, and the listing source before approving.",
+                        systemImage: "checkmark.seal"
+                    )
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                }
+            }
+            .navigationTitle("Claim listing")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(sending ? "Submitting..." : "Submit") { submit() }
+                        .disabled(sending || orgName.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
+                }
+            }
+        }
+    }
+
+    private func submit() {
+        let cleanOrg = orgName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleanOrg.count >= 2 else { return }
+        sending = true
+        Task {
+            let result = await appState.load {
+                try await $0.claimListing(
+                    id: listing.id,
+                    orgName: cleanOrg,
+                    website: website.trimmingCharacters(in: .whitespacesAndNewlines),
+                    note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            }
+            sending = false
+            if let result {
+                appState.infoMessage = result == "approved"
+                    ? "Verified by email domain. You now manage this listing."
+                    : "Claim submitted for review."
+                await onSubmitted()
+                dismiss()
+            }
         }
     }
 }

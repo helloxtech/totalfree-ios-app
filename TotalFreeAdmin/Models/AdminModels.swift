@@ -464,6 +464,7 @@ struct SetUserRoleParams: Encodable { let target: String; let new_role: String }
 struct ReportListingParams: Encodable { let p_listing: String; let p_reason: String; let p_note: String? }
 struct CandidatesParams: Encodable { let p_status: String }
 struct ReviewCandidateParams: Encodable { let p_candidate: String; let p_approve: Bool; let p_reason: String? }
+struct ClaimListingParams: Encodable { let p_listing: String; let p_org_name: String; let p_website: String; let p_note: String }
 struct ResolveClaimParams: Encodable { let p_claim: String; let p_approve: Bool }
 struct SponsorStatusUpdate: Encodable { let status: String }
 struct ListingEditUpdate: Encodable { let title: String; let description: String; let category: String; let condition: String? }
