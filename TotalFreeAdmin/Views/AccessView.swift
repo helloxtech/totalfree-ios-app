@@ -78,7 +78,7 @@ struct AuthView: View {
                          : "Welcome back.")
                 }
             }
-            .navigationTitle(mode == .signIn ? "Sign in" : "Join TotalFree")
+            .navigationTitle(mode == .signIn ? "Sign in" : "Join Total Free")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

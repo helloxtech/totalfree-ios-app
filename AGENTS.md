@@ -1,11 +1,11 @@
-# TotalFree iOS App Instructions
+# Total Free iOS App Instructions
 
-Native SwiftUI app for the **TotalFree** community platform. Open to all users with
+Native SwiftUI app for the **Total Free** community platform. Open to all users with
 role-based privileges; talks **directly to Supabase** with RLS as the security boundary.
 
 ## Project Facts
 
-- Bundle identifier: `ca.totalfree.admin` (kept for APNs continuity; display name is "TotalFree").
+- Bundle identifier: `ca.totalfree.admin` (kept for APNs continuity; display name is "Total Free").
 - Backend: Supabase project `ettemffrunjqoqwkaxmg` — the same one as the
   `TotalFree-Claude` web app. No custom API server.
 - Auth: Supabase GoTrue (email + password) with refresh; session in the Keychain.

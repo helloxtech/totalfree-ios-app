@@ -1,6 +1,6 @@
-# TotalFree iOS App
+# Total Free iOS App
 
-Native iPhone app for the **TotalFree** community platform — a warm place to find
+Native iPhone app for the **Total Free** community platform — a warm place to find
 and share genuinely free items, local business freebies, and free learning
 resources across Metro Vancouver.
 
@@ -38,9 +38,10 @@ Members post from **My Stuff** (the **+ New post** button), not a separate tab.
 - **Auth emails:** sign-up still goes through Supabase Auth. Confirmation emails
   are sent by the shared `TotalFree-Claude/supabase/functions/send-email` Auth hook
   via Resend; the iOS signup sets the confirmation redirect to `https://totalfree.ca/`.
-- **Social sign-in:** Google, Apple, Microsoft, and Facebook use Supabase OAuth and
-  return through `https://totalfree.ca/auth/mobile-callback`, which opens the app
-  at `ca.totalfree.admin://auth/callback`.
+- **Social sign-in:** Google, Apple, Microsoft, and Facebook start from
+  `https://totalfree.ca/auth/mobile-start` so iOS permission prompts show
+  `totalfree.ca`, then return through `https://totalfree.ca/auth/mobile-callback`,
+  which opens the app at `ca.totalfree.admin://auth/callback`.
 
 ### Source map
 
@@ -77,7 +78,13 @@ static let publishableKey = "sb_publishable_…"   // safe to ship; RLS protects
 To point the app at a different Supabase project, change those two values. Nothing
 else is environment-specific.
 
-For social sign-in, the app sends Supabase OAuth through the web callback bridge:
+For social sign-in, the app starts OAuth through the Total Free web domain:
+
+```text
+https://totalfree.ca/auth/mobile-start
+```
+
+Supabase returns to the web callback bridge:
 
 ```text
 https://totalfree.ca/auth/mobile-callback
@@ -105,7 +112,7 @@ In-app alerts (the bell tab) work today. For real push:
 Full provider setup lives in `TotalFree-Claude/docs/notification-strategy.md`.
 
 > Note: the bundle id is still `ca.totalfree.admin` to keep the existing APNs /
-> provisioning continuity. The user-facing app name is **TotalFree**. Renaming the
+> provisioning continuity. The user-facing app name is **Total Free**. Renaming the
 > bundle id later requires updating `APNS_BUNDLE_ID` to match.
 
 ## Open in Xcode

@@ -40,7 +40,7 @@ struct BrowseView: View {
     // Compact title row — the title shares the row with the alert bell to save height.
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("TotalFree").font(.title.bold())
+            Text("Total Free").font(.title.bold())
             Spacer()
             if appState.isAuthed { NotificationBellButton() }
         }

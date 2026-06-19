@@ -133,6 +133,23 @@ struct SupabaseClient {
         return url
     }
 
+    func mobileOAuthStartURL(provider: OAuthProvider) throws -> URL {
+        guard var components = URLComponents(url: SupabaseConfig.mobileAuthStartURL, resolvingAgainstBaseURL: false) else {
+            throw SupabaseError.invalidURL
+        }
+
+        var queryItems = [
+            URLQueryItem(name: "provider", value: provider.rawValue),
+        ]
+        if let scopes = provider.scopes {
+            queryItems.append(URLQueryItem(name: "scopes", value: scopes))
+        }
+        components.queryItems = queryItems
+
+        guard let url = components.url else { throw SupabaseError.invalidURL }
+        return url
+    }
+
     func session(fromOAuthCallback url: URL) async throws -> AuthSession {
         let params = Self.callbackParameters(from: url)
         if let message = params["error_description"] ?? params["error"] {

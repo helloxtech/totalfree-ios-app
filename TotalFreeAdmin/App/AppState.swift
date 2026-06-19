@@ -108,7 +108,7 @@ final class AppState: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            let authURL = try SupabaseClient().oauthURL(provider: provider)
+            let authURL = try SupabaseClient().mobileOAuthStartURL(provider: provider)
             let callbackURL = try await openOAuthSession(url: authURL)
             let s = try await SupabaseClient().session(fromOAuthCallback: callbackURL)
             await applySession(s)

@@ -52,7 +52,8 @@ RPCs: `moderate_listing(p_id, p_status)`, `report_listing(p_listing, p_reason, p
 `admin_list_users()`, `set_user_role(target, new_role)`.
 
 Auth: `/auth/v1/token` (password + refresh grants), `/auth/v1/signup`,
-`/auth/v1/authorize` (Google, Apple, Microsoft/Azure, Facebook OAuth through the
+`/auth/v1/authorize` (Google, Apple, Microsoft/Azure, Facebook OAuth started from
+`https://totalfree.ca/auth/mobile-start` and returned through the
 `https://totalfree.ca/auth/mobile-callback` bridge).
 
 Keep this surface in sync with the web data layer at

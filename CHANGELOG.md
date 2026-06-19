@@ -5,6 +5,10 @@
 ### Added
 
 - Google, Apple, Microsoft, and Facebook sign-in buttons on the native auth sheet.
+- App bundle metadata now uses the user-facing name `Total Free` instead of the
+  internal target name in iOS permission prompts.
+- Mobile OAuth now starts at `https://totalfree.ca/auth/mobile-start`, so iOS
+  permission prompts show the Total Free domain instead of `supabase.co`.
 - Supabase OAuth callback handling through the `https://totalfree.ca/auth/mobile-callback`
   bridge to `ca.totalfree.admin://auth/callback`, storing the returned session in
   the existing Keychain session flow.
@@ -144,7 +148,7 @@ role-based privileges**.
 
 - Authentication now uses Supabase sessions (access + refresh tokens) in the Keychain
   instead of the Worker login endpoint.
-- App display name is now "TotalFree" (bundle id unchanged: `ca.totalfree.admin`).
+- App display name is now "Total Free" (bundle id unchanged: `ca.totalfree.admin`).
 - Privilege model follows the web app: staff = moderator/owner/admin; owner = admin/owner.
 
 ### Removed

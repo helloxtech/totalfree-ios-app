@@ -17,7 +17,7 @@ struct AccountView: View {
                     signedIn
                 } else {
                     SignInPrompt(
-                        title: "Welcome to TotalFree",
+                        title: "Welcome to Total Free",
                         message: "Browse freely without an account. Sign in to post, request, and get alerts.",
                         systemImage: "person.crop.circle"
                     )
@@ -141,7 +141,7 @@ struct AccountView: View {
                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
             } footer: {
-                Text("TotalFree — a warm place to find and share genuinely free things across Metro Vancouver.")
+                Text("Total Free — a warm place to find and share genuinely free things across Metro Vancouver.")
             }
         }
         .alert("Display name", isPresented: $editingName) {
