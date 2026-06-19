@@ -9,6 +9,12 @@ enum SupabaseConfig {
     static let url = URL(string: "https://ettemffrunjqoqwkaxmg.supabase.co")!
     static let publishableKey = "sb_publishable_H6GXKlP7S91LCqBqCaeeLA_mw4kYAOm"
     static let emailConfirmationRedirectURL = URL(string: "https://totalfree.ca/")!
+    static let mobileAuthCallbackScheme = "ca.totalfree.admin"
+    static let mobileAuthRedirectURL = URL(string: "\(mobileAuthCallbackScheme)://auth/callback")!
+
+    static func isMobileAuthRedirect(_ url: URL) -> Bool {
+        url.scheme == mobileAuthCallbackScheme && url.host == "auth" && url.path == "/callback"
+    }
 
     // PostgREST embed used everywhere a listing is read, so cards/detail get the
     // owner name + sponsor/partner label in one round trip.

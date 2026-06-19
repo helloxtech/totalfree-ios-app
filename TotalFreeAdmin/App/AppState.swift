@@ -1,5 +1,7 @@
 import Foundation
+import AuthenticationServices
 import SwiftUI
+import UIKit
 
 // =============================================================================
 // AppState — single source of truth for session, profile/role, and shared data.
@@ -33,6 +35,8 @@ final class AppState: ObservableObject {
     @Published var infoMessage: String?
 
     private let store: SessionStoring
+    private let oauthPresentationContext = OAuthPresentationContextProvider()
+    private var oauthSession: ASWebAuthenticationSession?
 
     init(sessionStore: SessionStoring = KeychainSessionStore()) {
         self.store = sessionStore
@@ -95,6 +99,31 @@ final class AppState: ObservableObject {
             case .needsEmailVerification:
                 infoMessage = "Almost there — check your email to confirm your account, then sign in."
             }
+        } catch {
+            alertMessage = message(for: error)
+        }
+    }
+
+    func signInWithOAuth(_ provider: OAuthProvider) async {
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let authURL = try SupabaseClient().oauthURL(provider: provider)
+            let callbackURL = try await openOAuthSession(url: authURL)
+            let s = try await SupabaseClient().session(fromOAuthCallback: callbackURL)
+            await applySession(s)
+        } catch OAuthSignInError.cancelled {
+            // User cancelled the web auth sheet; no app-level alert needed.
+        } catch {
+            alertMessage = message(for: error)
+        }
+    }
+
+    func handleOpenURL(_ url: URL) async {
+        guard SupabaseConfig.isMobileAuthRedirect(url) else { return }
+        do {
+            let s = try await SupabaseClient().session(fromOAuthCallback: url)
+            await applySession(s)
         } catch {
             alertMessage = message(for: error)
         }
@@ -314,5 +343,56 @@ final class AppState: ObservableObject {
 
     private func message(for error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    private func openOAuthSession(url: URL) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let session = ASWebAuthenticationSession(
+                url: url,
+                callbackURLScheme: SupabaseConfig.mobileAuthCallbackScheme
+            ) { [weak self] callbackURL, error in
+                Task { @MainActor in self?.oauthSession = nil }
+                if let error {
+                    if let authError = error as? ASWebAuthenticationSessionError,
+                       authError.code == .canceledLogin {
+                        continuation.resume(throwing: OAuthSignInError.cancelled)
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
+                    return
+                }
+                guard let callbackURL else {
+                    continuation.resume(throwing: SupabaseError.noResponse)
+                    return
+                }
+                continuation.resume(returning: callbackURL)
+            }
+            session.presentationContextProvider = oauthPresentationContext
+            session.prefersEphemeralWebBrowserSession = false
+            oauthSession = session
+            if !session.start() {
+                oauthSession = nil
+                continuation.resume(throwing: SupabaseError.noResponse)
+            }
+        }
+    }
+}
+
+private enum OAuthSignInError: LocalizedError {
+    case cancelled
+
+    var errorDescription: String? {
+        switch self {
+        case .cancelled: "Sign-in was cancelled."
+        }
+    }
+}
+
+private final class OAuthPresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
     }
 }

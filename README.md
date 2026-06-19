@@ -26,7 +26,8 @@ Members post from **My Stuff** (the **+ New post** button), not a separate tab.
 - **Backend:** talks **directly to Supabase** — the same project (`ettemffrunjqoqwkaxmg`)
   that powers the [TotalFree-Claude](../TotalFree-Claude) web app. No custom server
   in between.
-  - **Auth:** Supabase GoTrue (`/auth/v1/...`) — email + password, with token refresh.
+  - **Auth:** Supabase GoTrue (`/auth/v1/...`) — email + password, social OAuth,
+    with token refresh.
   - **Data:** PostgREST (`/rest/v1/...`) for tables and SECURITY DEFINER RPCs
     (`moderate_listing`, `admin_list_users`, `set_user_role`, `report_listing`).
   - **Security boundary:** Row Level Security. The app ships only the **publishable**
@@ -37,6 +38,8 @@ Members post from **My Stuff** (the **+ New post** button), not a separate tab.
 - **Auth emails:** sign-up still goes through Supabase Auth. Confirmation emails
   are sent by the shared `TotalFree-Claude/supabase/functions/send-email` Auth hook
   via Resend; the iOS signup sets the confirmation redirect to `https://totalfree.ca/`.
+- **Social sign-in:** Google, Apple, Microsoft, and Facebook use Supabase OAuth and
+  return to the app through `ca.totalfree.admin://auth/callback`.
 
 ### Source map
 
@@ -72,6 +75,12 @@ static let publishableKey = "sb_publishable_…"   // safe to ship; RLS protects
 
 To point the app at a different Supabase project, change those two values. Nothing
 else is environment-specific.
+
+For social sign-in, add this mobile URL to the Supabase Auth redirect allow list:
+
+```text
+ca.totalfree.admin://auth/callback
+```
 
 ## Push Notifications (APNs)
 

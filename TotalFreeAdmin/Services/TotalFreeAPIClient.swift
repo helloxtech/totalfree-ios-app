@@ -31,6 +31,40 @@ enum SupabaseError: LocalizedError {
     }
 }
 
+enum OAuthProvider: String, CaseIterable, Identifiable {
+    case google
+    case apple
+    case azure
+    case facebook
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .google: "Continue with Google"
+        case .apple: "Continue with Apple"
+        case .azure: "Continue with Microsoft"
+        case .facebook: "Continue with Facebook"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .google: "g.circle"
+        case .apple: "apple.logo"
+        case .azure: "square.grid.2x2"
+        case .facebook: "f.circle"
+        }
+    }
+
+    var scopes: String? {
+        switch self {
+        case .azure: "email"
+        case .google, .apple, .facebook: nil
+        }
+    }
+}
+
 struct SupabaseClient {
     /// The signed-in user's JWT, when available. Public reads work without it
     /// (the publishable key is sent as the anon identity).
@@ -80,6 +114,55 @@ struct SupabaseClient {
         return .needsEmailVerification
     }
 
+    func oauthURL(provider: OAuthProvider, redirectTo: URL = SupabaseConfig.mobileAuthRedirectURL) throws -> URL {
+        guard let authorizeURL = URL(string: "/auth/v1/authorize", relativeTo: baseURL),
+              var components = URLComponents(url: authorizeURL, resolvingAgainstBaseURL: true) else {
+            throw SupabaseError.invalidURL
+        }
+
+        var queryItems = [
+            URLQueryItem(name: "provider", value: provider.rawValue),
+            URLQueryItem(name: "redirect_to", value: redirectTo.absoluteString),
+        ]
+        if let scopes = provider.scopes {
+            queryItems.append(URLQueryItem(name: "scopes", value: scopes))
+        }
+        components.queryItems = queryItems
+
+        guard let url = components.url else { throw SupabaseError.invalidURL }
+        return url
+    }
+
+    func session(fromOAuthCallback url: URL) async throws -> AuthSession {
+        let params = Self.callbackParameters(from: url)
+        if let message = params["error_description"] ?? params["error"] {
+            throw SupabaseError.server(message.replacingOccurrences(of: "+", with: " "))
+        }
+
+        guard let accessToken = params["access_token"], !accessToken.isEmpty,
+              let refreshToken = params["refresh_token"], !refreshToken.isEmpty else {
+            throw SupabaseError.server("The sign-in response did not include a Supabase session.")
+        }
+
+        let expiresAt: Double?
+        if let raw = params["expires_at"], let value = Double(raw) {
+            expiresAt = value
+        } else if let raw = params["expires_in"], let seconds = Double(raw) {
+            expiresAt = Date().timeIntervalSince1970 + seconds
+        } else {
+            expiresAt = nil
+        }
+
+        let user = try? await SupabaseClient(accessToken: accessToken, urlSession: urlSession).currentUser()
+        return AuthSession(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresAt: expiresAt,
+            tokenType: params["token_type"],
+            user: user
+        )
+    }
+
     func refresh(refreshToken: String) async throws -> AuthSession {
         let data = try await send(
             path: "/auth/v1/token",
@@ -89,6 +172,11 @@ struct SupabaseClient {
             authed: false
         )
         return try decode(AuthSession.self, from: data)
+    }
+
+    func currentUser() async throws -> AuthUser {
+        let data = try await send(path: "/auth/v1/user", method: "GET", body: Optional<PasswordGrantBody>.none)
+        return try decode(AuthUser.self, from: data)
     }
 
     func signOutRemote() async {
@@ -270,6 +358,20 @@ struct SupabaseClient {
         var components = URLComponents()
         components.queryItems = items
         return components.percentEncodedQuery ?? ""
+    }
+
+    private static func callbackParameters(from url: URL) -> [String: String] {
+        queryParameters(from: url.query)
+            .merging(queryParameters(from: url.fragment)) { _, fragmentValue in fragmentValue }
+    }
+
+    private static func queryParameters(from raw: String?) -> [String: String] {
+        guard let raw, !raw.isEmpty else { return [:] }
+        var components = URLComponents()
+        components.percentEncodedQuery = raw
+        return (components.queryItems ?? []).reduce(into: [String: String]()) { result, item in
+            result[item.name] = item.value ?? ""
+        }
     }
 }
 

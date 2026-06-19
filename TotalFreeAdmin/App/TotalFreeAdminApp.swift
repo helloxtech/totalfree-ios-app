@@ -11,6 +11,9 @@ struct TotalFreeAdminApp: App {
                 .environmentObject(appState)
                 .tint(Theme.accent)
                 .task { await appState.restoreSession() }
+                .onOpenURL { url in
+                    Task { await appState.handleOpenURL(url) }
+                }
         }
     }
 }

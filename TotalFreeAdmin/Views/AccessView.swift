@@ -27,6 +27,25 @@ struct AuthView: View {
                 }
 
                 Section {
+                    ForEach(OAuthProvider.allCases) { provider in
+                        Button {
+                            socialSignIn(provider)
+                        } label: {
+                            HStack {
+                                Image(systemName: provider.systemImage)
+                                    .frame(width: 22)
+                                Text(provider.label)
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                        }
+                        .disabled(appState.isBusy)
+                    }
+                } footer: {
+                    Text("Use the same account providers as the web app.")
+                }
+
+                Section {
                     if mode == .join {
                         TextField("Your name", text: $name)
                             .textContentType(.name)
@@ -70,6 +89,11 @@ struct AuthView: View {
                 if authed { dismiss() }
             }
         }
+    }
+
+    private func socialSignIn(_ provider: OAuthProvider) {
+        focused = nil
+        Task { await appState.signInWithOAuth(provider) }
     }
 
     private var canSubmit: Bool {

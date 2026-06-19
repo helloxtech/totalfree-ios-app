@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — 2026-06-18 — Mobile social sign-in
+
+### Added
+
+- Google, Apple, Microsoft, and Facebook sign-in buttons on the native auth sheet.
+- Supabase OAuth callback handling through `ca.totalfree.admin://auth/callback`,
+  storing the returned session in the existing Keychain session flow.
+
 ## Unreleased — 2026-06-16 — Message grouping and Resend verification
 
 ### Changed
