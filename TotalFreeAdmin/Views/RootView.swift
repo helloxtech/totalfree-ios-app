@@ -83,10 +83,10 @@ struct StaffHubView: View {
                         hubLink("Safety reports", "flag", .red, badge: appState.reportsCount) { ReportsView() }
                     }
                     if appState.can(Perm.claimResolve) {
-                        hubLink("Organization claims", "checkmark.seal", .blue) { ClaimsView() }
+                        hubLink("Organization claims", "checkmark.seal", .blue, badge: appState.claimsCount) { ClaimsView() }
                     }
                     if appState.can(Perm.businessApprove) {
-                        hubLink("Business approvals", "building.2", .indigo) { SponsorsView() }
+                        hubLink("Business approvals", "building.2", .indigo, badge: appState.businessApprovalsCount) { SponsorsView() }
                     }
                 }
 

@@ -368,6 +368,14 @@ extension SupabaseClient {
         try await count("/rest/v1/reports?status=eq.open")
     }
 
+    func countPendingClaims() async throws -> Int {
+        try await count("/rest/v1/org_claims?status=eq.pending")
+    }
+
+    func countPendingSponsors() async throws -> Int {
+        try await count("/rest/v1/sponsors?status=eq.pending_review")
+    }
+
     /// Count of the member's own posts that need their attention (rejected → edit & resubmit).
     func countMyActionableListings(ownerId: String) async throws -> Int {
         try await count("/rest/v1/listings?owner_id=eq.\(ownerId)&status=eq.rejected")

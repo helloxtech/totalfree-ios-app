@@ -122,6 +122,40 @@ struct NotificationDetailView: View {
                 .padding(.vertical, 4)
             }
 
+            if note.type == "admin_report_new" {
+                Section {
+                    NavigationLink {
+                        ReportsView()
+                    } label: {
+                        Label("Open safety reports", systemImage: "flag")
+                    }
+                }
+            } else if note.type == "admin_listing_pending" {
+                Section {
+                    NavigationLink {
+                        ModerationView()
+                    } label: {
+                        Label("Open moderation queue", systemImage: "rectangle.stack.badge.person.crop")
+                    }
+                }
+            } else if note.type == "admin_business_pending" {
+                Section {
+                    NavigationLink {
+                        SponsorsView()
+                    } label: {
+                        Label("Open business approvals", systemImage: "building.2")
+                    }
+                }
+            } else if note.type == "admin_org_claim_pending" {
+                Section {
+                    NavigationLink {
+                        ClaimsView()
+                    } label: {
+                        Label("Open organization claims", systemImage: "checkmark.seal")
+                    }
+                }
+            }
+
             if let lid = note.targetListingId {
                 Section {
                     NavigationLink {

@@ -240,6 +240,10 @@ struct AppNotification: Codable, Identifiable, Equatable {
         case "listing_rejected": "Post needs changes"
         case "sponsor_approved": "Business approved"
         case "match_found": "New match"
+        case "admin_report_new": "Report needs review"
+        case "admin_listing_pending": "Post pending review"
+        case "admin_business_pending": "Business needs approval"
+        case "admin_org_claim_pending": "Organization claim needs review"
         default: title
         }
     }
@@ -253,6 +257,10 @@ struct AppNotification: Codable, Identifiable, Equatable {
         case "listing_rejected": "exclamationmark.triangle"
         case "sponsor_approved": "building.2"
         case "match_found": "sparkles"
+        case "admin_report_new": "flag"
+        case "admin_listing_pending": "rectangle.stack.badge.person.crop"
+        case "admin_business_pending": "building.2"
+        case "admin_org_claim_pending": "checkmark.seal"
         default: "bell"
         }
     }
@@ -263,6 +271,8 @@ struct NotificationData: Codable, Equatable {
     let listingId: String?
     let requestId: String?
     let sponsorId: String?
+    let reportId: String?
+    let claimId: String?
 }
 
 // MARK: - Admin users (from admin_list_users RPC)
