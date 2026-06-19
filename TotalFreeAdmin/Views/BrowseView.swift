@@ -43,13 +43,19 @@ struct BrowseView: View {
 
     // Compact title row — the title shares the row with the alert bell to save height.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Total Free").font(.title.bold())
+        HStack(alignment: .center, spacing: 8) {
+            Image("TotalFreeLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 30, height: 30)
+                .accessibilityHidden(true)
+            Text("Total Free")
+                .font(.title3.weight(.bold))
             Spacer()
             if appState.isAuthed { NotificationBellButton() }
         }
         .padding(.horizontal)
-        .padding(.top, 4)
+        .padding(.top, 2)
     }
 
     // Search first, filters tucked into one control so listings appear sooner.
@@ -71,7 +77,7 @@ struct BrowseView: View {
 
             Menu {
                 Picker("Source", selection: $sourceType) {
-                    Label("Everyone", systemImage: "person.3").tag("")
+                    Label("All sources", systemImage: "person.3").tag("")
                     ForEach(AppConstants.sourceBuckets) { b in
                         Label(b.label, systemImage: AppConstants.sourceSymbol(b.id)).tag(b.id)
                     }
