@@ -10,7 +10,7 @@ enum SupabaseConfig {
     static let publishableKey = "sb_publishable_H6GXKlP7S91LCqBqCaeeLA_mw4kYAOm"
     static let emailConfirmationRedirectURL = URL(string: "https://totalfree.ca/")!
     static let mobileAuthCallbackScheme = "ca.totalfree.admin"
-    static let mobileAuthRedirectURL = URL(string: "\(mobileAuthCallbackScheme)://auth/callback")!
+    static let mobileAuthRedirectURL = URL(string: "https://totalfree.ca/auth/mobile-callback")!
 
     static func isMobileAuthRedirect(_ url: URL) -> Bool {
         url.scheme == mobileAuthCallbackScheme && url.host == "auth" && url.path == "/callback"

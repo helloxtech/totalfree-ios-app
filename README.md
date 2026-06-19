@@ -39,7 +39,8 @@ Members post from **My Stuff** (the **+ New post** button), not a separate tab.
   are sent by the shared `TotalFree-Claude/supabase/functions/send-email` Auth hook
   via Resend; the iOS signup sets the confirmation redirect to `https://totalfree.ca/`.
 - **Social sign-in:** Google, Apple, Microsoft, and Facebook use Supabase OAuth and
-  return to the app through `ca.totalfree.admin://auth/callback`.
+  return through `https://totalfree.ca/auth/mobile-callback`, which opens the app
+  at `ca.totalfree.admin://auth/callback`.
 
 ### Source map
 
@@ -76,7 +77,13 @@ static let publishableKey = "sb_publishable_…"   // safe to ship; RLS protects
 To point the app at a different Supabase project, change those two values. Nothing
 else is environment-specific.
 
-For social sign-in, add this mobile URL to the Supabase Auth redirect allow list:
+For social sign-in, the app sends Supabase OAuth through the web callback bridge:
+
+```text
+https://totalfree.ca/auth/mobile-callback
+```
+
+The bridge then opens the registered iOS callback scheme:
 
 ```text
 ca.totalfree.admin://auth/callback
