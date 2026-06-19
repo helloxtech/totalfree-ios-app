@@ -14,6 +14,7 @@ struct BrowseView: View {
     @State private var loaded = false
     @State private var showMap = false
     @State private var mapSelection: Listing?
+    @State private var postShortcut: BrowsePostShortcut?
 
     private let kind = "offer"
     private let gridColumns = [
@@ -28,12 +29,16 @@ struct BrowseView: View {
             VStack(spacing: 8) {
                 header
                 searchAndFilter
+                quickPostActions
                 activeFilterStrip
                 content
             }
             .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $mapSelection) { listing in
                 NavigationStack { ListingDetailView(listing: listing) }
+            }
+            .sheet(item: $postShortcut) { shortcut in
+                PostView(initialKind: shortcut.kind, asSheet: true)
             }
             .task { if !loaded { await reload(); loaded = true } }
             .onChange(of: category) { _, _ in Task { await reload() } }
@@ -105,6 +110,24 @@ struct BrowseView: View {
             .accessibilityLabel("Filters")
         }
         .padding(.horizontal)
+    }
+
+    private var quickPostActions: some View {
+        HStack(spacing: 10) {
+            Button { postShortcut = .offer } label: {
+                Label("Give away", systemImage: "gift.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(BrowseQuickPostButtonStyle(primary: true))
+
+            Button { postShortcut = .wanted } label: {
+                Label("Request", systemImage: "hand.raised.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(BrowseQuickPostButtonStyle(primary: false))
+        }
+        .padding(.horizontal)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -200,6 +223,14 @@ struct BrowseView: View {
     }
 }
 
+private enum BrowsePostShortcut: String, Identifiable {
+    case offer
+    case wanted
+
+    var id: String { rawValue }
+    var kind: String { rawValue }
+}
+
 private struct CategoryFilterChip: View {
     let label: String
     let systemImage: String?
@@ -225,6 +256,22 @@ private struct CategoryFilterChip: View {
                 .foregroundStyle(selected ? .white : .primary)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct BrowseQuickPostButtonStyle: ButtonStyle {
+    let primary: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .labelStyle(.titleAndIcon)
+            .padding(.horizontal, 12)
+            .frame(height: 42)
+            .background(primary ? Theme.accent : Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(primary ? .white : .primary)
+            .shadow(color: primary ? .black.opacity(0.08) : .clear, radius: 5, y: 2)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 }
 

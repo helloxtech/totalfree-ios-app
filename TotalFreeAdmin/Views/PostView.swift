@@ -9,9 +9,9 @@ import UIKit
 struct PostView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    var asSheet: Bool = false
+    let asSheet: Bool
 
-    @State private var kind = "offer"
+    @State private var kind: String
     @State private var title = ""
     @State private var description = ""
     @State private var category = "home"
@@ -31,6 +31,11 @@ struct PostView: View {
     private let metroVancouver = CLLocationCoordinate2D(latitude: 49.22, longitude: -122.95)
     private let maxPhotos = 5
 
+    init(initialKind: String = "offer", asSheet: Bool = false) {
+        self.asSheet = asSheet
+        _kind = State(initialValue: initialKind == "wanted" ? "wanted" : "offer")
+    }
+
     var body: some View {
         NavigationStack {
             if appState.isAuthed {
@@ -43,6 +48,11 @@ struct PostView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationTitle("Post")
+            }
+        }
+        .toolbar {
+            if asSheet {
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
             }
         }
     }
@@ -142,11 +152,6 @@ struct PostView: View {
         }
         .navigationTitle(kind == "wanted" ? "Post a wanted" : "Post a free item")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if asSheet {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
-            }
-        }
         .sheet(isPresented: $showMap) {
             LocationPickerView(initial: coordinate ?? metroVancouver) { picked in
                 coordinate = picked.coordinate
