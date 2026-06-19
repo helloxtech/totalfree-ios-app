@@ -10,20 +10,25 @@ struct BrowseView: View {
     @State private var query = ""
     @State private var category = ""
     @State private var sourceType = ""
-    @State private var kind = ""
     @State private var loading = false
     @State private var loaded = false
     @State private var showMap = false
     @State private var mapSelection: Listing?
 
-    private var filtersActive: Bool { !sourceType.isEmpty || !kind.isEmpty }
+    private let kind = "offer"
+    private let gridColumns = [
+        GridItem(.flexible(minimum: 0), spacing: 12, alignment: .top),
+        GridItem(.flexible(minimum: 0), spacing: 12, alignment: .top)
+    ]
+    private var filtersActive: Bool { !sourceType.isEmpty || !category.isEmpty }
+    private var activeFilterCount: Int { [sourceType, category].filter { !$0.isEmpty }.count }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 8) {
                 header
                 searchAndFilter
-                categoryChips
+                activeFilterStrip
                 content
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -33,7 +38,6 @@ struct BrowseView: View {
             .task { if !loaded { await reload(); loaded = true } }
             .onChange(of: category) { _, _ in Task { await reload() } }
             .onChange(of: sourceType) { _, _ in Task { await reload() } }
-            .onChange(of: kind) { _, _ in Task { await reload() } }
         }
     }
 
@@ -48,12 +52,12 @@ struct BrowseView: View {
         .padding(.top, 4)
     }
 
-    // Search field with the filter control directly to its right (easy to spot).
+    // Search first, filters tucked into one control so listings appear sooner.
     private var searchAndFilter: some View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search free items, places…", text: $query)
+                TextField("Search free stuff", text: $query)
                     .submitLabel(.search)
                     .onSubmit { Task { await reload() } }
                 if !query.isEmpty {
@@ -66,19 +70,27 @@ struct BrowseView: View {
             .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 11))
 
             Menu {
-                Picker("Kind", selection: $kind) {
-                    Text("Offers & wanted").tag("")
-                    Text("Free to give").tag("offer")
-                    Text("Wanted").tag("wanted")
-                }
                 Picker("Source", selection: $sourceType) {
                     Text("Everyone").tag("")
                     ForEach(AppConstants.sourceBuckets) { b in Text(b.label).tag(b.id) }
                 }
+                Picker("Category", selection: $category) {
+                    Text("All categories").tag("")
+                    ForEach(AppConstants.browseCategories, id: \.self) { cat in
+                        Text(AppConstants.categoryLabel(cat)).tag(cat)
+                    }
+                }
+                if filtersActive {
+                    Button("Clear filters", role: .destructive) {
+                        sourceType = ""
+                        category = ""
+                    }
+                }
             } label: {
-                Image(systemName: filtersActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                    .font(.title2)
-                    .frame(width: 44, height: 42)
+                Label(filtersActive ? "Filters \(activeFilterCount)" : "Filters", systemImage: filtersActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(height: 42)
+                    .padding(.horizontal, 10)
                     .background(filtersActive ? Theme.accent.opacity(0.15) : Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 11))
                     .foregroundStyle(filtersActive ? Theme.accent : .primary)
             }
@@ -87,26 +99,52 @@ struct BrowseView: View {
         .padding(.horizontal)
     }
 
-    private var categoryChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                CategoryFilterChip(label: "All", selected: category.isEmpty) { category = "" }
-                ForEach(AppConstants.categories, id: \.self) { cat in
-                    CategoryFilterChip(
-                        label: "\(AppConstants.categoryEmoji[cat] ?? "") \(AppConstants.categoryLabel(cat))",
-                        selected: category == cat
-                    ) { category = category == cat ? "" : cat }
+    @ViewBuilder
+    private var activeFilterStrip: some View {
+        if filtersActive {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if !sourceType.isEmpty {
+                        CategoryFilterChip(label: "\(AppConstants.sourceLabel(sourceType)) ×", selected: true) { sourceType = "" }
+                    }
+                    if !category.isEmpty {
+                        CategoryFilterChip(label: "\(AppConstants.categoryLabel(category)) ×", selected: true) { category = "" }
+                    }
+                    CategoryFilterChip(label: "Clear", selected: false) {
+                        sourceType = ""
+                        category = ""
+                    }
                 }
+                .padding(.horizontal)
             }
-            .padding(.horizontal)
         }
+    }
+
+    private var resultsBar: some View {
+        HStack(spacing: 12) {
+            Text(listings.isEmpty ? "Free items" : "\(listings.count) free item\(listings.count == 1 ? "" : "s")")
+                .font(.headline)
+            Spacer()
+            HStack(spacing: 8) {
+                Button { withAnimation(.easeInOut(duration: 0.15)) { showMap = false } } label: {
+                    Label("List", systemImage: "square.grid.2x2")
+                }
+                .buttonStyle(BrowseModeButtonStyle(active: !showMap))
+
+                Button { withAnimation(.easeInOut(duration: 0.15)) { showMap = true } } label: {
+                    Label("Map", systemImage: "mappin")
+                }
+                .buttonStyle(BrowseModeButtonStyle(active: showMap))
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 2)
     }
 
     @ViewBuilder
     private var content: some View {
-        // In map mode the toggle moves to the top-LEFT so it never sits under the
-        // map's location button (which lives top-right); in list mode it stays right.
-        ZStack(alignment: showMap ? .topLeading : .topTrailing) {
+        VStack(spacing: 8) {
+            resultsBar
             Group {
                 if showMap {
                     BrowseMapView(query: query, category: category, sourceType: sourceType, kind: kind, selection: $mapSelection)
@@ -120,42 +158,25 @@ struct BrowseView: View {
                         systemImage: "gift"
                     )
                 } else {
-                    List {
-                        ForEach(listings) { listing in
-                            NavigationLink {
-                                ListingDetailView(listing: listing)
-                            } label: {
-                                ListingCard(listing: listing)
+                    ScrollView {
+                        LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 18) {
+                            ForEach(listings) { listing in
+                                NavigationLink {
+                                    ListingDetailView(listing: listing)
+                                } label: {
+                                    BrowseListingTile(listing: listing)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
+                        .padding(.horizontal)
+                        .padding(.bottom, 104)
                     }
-                    .listStyle(.plain)
                     .refreshable { await reload() }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            viewToggle
-                .padding(showMap ? .leading : .trailing, 14)
-                .padding(.top, 8)
         }
-    }
-
-    // Floating List/Map toggle — labelled with the mode you'd switch TO, so it
-    // costs no vertical space the way a full segmented row did.
-    private var viewToggle: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.15)) { showMap.toggle() }
-        } label: {
-            Label(showMap ? "List" : "Map", systemImage: showMap ? "list.bullet" : "map.fill")
-                .font(.caption.bold())
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .foregroundStyle(Theme.accent)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color(.separator)))
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-        }
-        .buttonStyle(.plain)
     }
 
     private func reload() async {
@@ -189,6 +210,130 @@ private struct CategoryFilterChip: View {
                 .foregroundStyle(selected ? .white : .primary)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct BrowseModeButtonStyle: ButtonStyle {
+    let active: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .labelStyle(.titleAndIcon)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(active ? Color(.systemBackground) : Color.clear, in: Capsule())
+            .foregroundStyle(active ? Theme.accent : .secondary)
+            .shadow(color: active ? .black.opacity(0.08) : .clear, radius: 5, y: 2)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+    }
+}
+
+private struct BrowseListingTile: View {
+    let listing: Listing
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ZStack(alignment: .topLeading) {
+                tileMedia
+                TileSourceBadge(sourceType: listing.sourceType)
+                    .padding(8)
+            }
+            Text(listing.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AppConstants.categoryLabel(listing.category))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Label(listing.locationText, systemImage: "mappin.and.ellipse")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if ["partner", "sponsored"].contains(listing.sourceType), !listing.sourceLabelText.isEmpty {
+                    Text("by \(listing.sourceLabelText)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var tileMedia: some View {
+        GeometryReader { proxy in
+            Group {
+                if let url = listing.imageUrl, let u = URL(string: url) {
+                    AsyncImage(url: u) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        case .failure:
+                            placeholder
+                        case .empty:
+                            ProgressView()
+                        @unknown default:
+                            placeholder
+                        }
+                    }
+                } else {
+                    placeholder
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.width)
+            .background(colorForSource(listing.sourceType).opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color(.separator).opacity(0.45)))
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+
+    private var placeholder: some View {
+        VStack(spacing: 8) {
+            Image(systemName: iconName)
+                .font(.title)
+            Text(AppConstants.categoryLabel(listing.category))
+                .font(.caption2.weight(.bold))
+                .textCase(.uppercase)
+                .tracking(0.8)
+        }
+        .foregroundStyle(colorForSource(listing.sourceType))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var iconName: String {
+        switch listing.category {
+        case "furniture": "chair"
+        case "home": "house"
+        case "school", "learning": "books.vertical"
+        case "kids": "figure.2.and.child.holdinghands"
+        case "sports": "soccerball"
+        case "food": "cup.and.saucer"
+        case "clothing": "tshirt"
+        default: "gift"
+        }
+    }
+}
+
+private struct TileSourceBadge: View {
+    let sourceType: String
+
+    var body: some View {
+        Text(AppConstants.sourceLabel(sourceType))
+            .font(.caption2.bold())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().stroke(colorForSource(sourceType).opacity(0.45), lineWidth: 1))
+            .foregroundStyle(colorForSource(sourceType))
+            .accessibilityLabel("Source: \(AppConstants.sourceLabel(sourceType))")
     }
 }
 

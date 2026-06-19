@@ -27,6 +27,7 @@ enum SupabaseConfig {
 // posting form and filters speak the same language as the rest of the platform.
 enum AppConstants {
     static let categories = ["furniture", "home", "school", "kids", "sports", "food", "clothing", "learning"]
+    static let browseCategories = categories.filter { $0 != "learning" }
 
     static let categoryLabels: [String: String] = [
         "furniture": "Furniture", "home": "Household", "school": "School", "kids": "Kids",
