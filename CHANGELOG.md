@@ -6,6 +6,8 @@
 
 - Google, Apple, Microsoft, and Facebook sign-in buttons on the native auth sheet.
 - Social sign-in rows now use provider logo assets instead of generic system icons.
+- Email join now requires confirming the password before account creation.
+- Email hook failures now show a user-readable confirmation-email message.
 - App bundle metadata now uses the user-facing name `Total Free` instead of the
   internal target name in iOS permission prompts.
 - Mobile OAuth now starts at `https://totalfree.ca/auth/mobile-start`, so iOS

@@ -11,8 +11,9 @@ struct AuthView: View {
     @State private var name = ""
     @State private var email = ""
     @State private var password = ""
+    @State private var confirmPassword = ""
     @FocusState private var focused: Field?
-    private enum Field { case name, email, password }
+    private enum Field { case name, email, password, confirmPassword }
 
     var body: some View {
         NavigationStack {
@@ -59,6 +60,16 @@ struct AuthView: View {
                     SecureField("Password", text: $password)
                         .textContentType(mode == .join ? .newPassword : .password)
                         .focused($focused, equals: .password)
+                    if mode == .join {
+                        SecureField("Confirm password", text: $confirmPassword)
+                            .textContentType(.newPassword)
+                            .focused($focused, equals: .confirmPassword)
+                        if passwordMismatch {
+                            Text("Passwords don't match.")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
 
                 Section {
@@ -87,6 +98,9 @@ struct AuthView: View {
             .onChange(of: appState.isAuthed) { _, authed in
                 if authed { dismiss() }
             }
+            .onChange(of: mode) { _, newMode in
+                if newMode == .signIn { confirmPassword = "" }
+            }
         }
     }
 
@@ -97,9 +111,15 @@ struct AuthView: View {
 
     private var canSubmit: Bool {
         let validEmail = email.contains("@") && email.contains(".")
-        let validPassword = password.count >= 6
+        let validPassword = mode == .signIn
+            ? !password.isEmpty
+            : password.count >= 8 && confirmPassword == password
         let validName = mode == .signIn || !name.trimmingCharacters(in: .whitespaces).isEmpty
         return validEmail && validPassword && validName
+    }
+
+    private var passwordMismatch: Bool {
+        mode == .join && !confirmPassword.isEmpty && password != confirmPassword
     }
 
     private func submit() {

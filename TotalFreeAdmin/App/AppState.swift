@@ -342,7 +342,11 @@ final class AppState: ObservableObject {
     }
 
     private func message(for error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        let text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        if text.localizedCaseInsensitiveContains("Unexpected status code returned from hook") {
+            return "We couldn't send the confirmation email. Please try again in a moment."
+        }
+        return text
     }
 
     private func openOAuthSession(url: URL) async throws -> URL {
