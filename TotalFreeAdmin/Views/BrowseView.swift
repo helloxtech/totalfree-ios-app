@@ -71,13 +71,15 @@ struct BrowseView: View {
 
             Menu {
                 Picker("Source", selection: $sourceType) {
-                    Text("Everyone").tag("")
-                    ForEach(AppConstants.sourceBuckets) { b in Text(b.label).tag(b.id) }
+                    Label("Everyone", systemImage: "person.3").tag("")
+                    ForEach(AppConstants.sourceBuckets) { b in
+                        Label(b.label, systemImage: AppConstants.sourceSymbol(b.id)).tag(b.id)
+                    }
                 }
                 Picker("Category", selection: $category) {
-                    Text("All categories").tag("")
+                    Label("All categories", systemImage: "square.grid.2x2").tag("")
                     ForEach(AppConstants.browseCategories, id: \.self) { cat in
-                        Text(AppConstants.categoryLabel(cat)).tag(cat)
+                        Label(AppConstants.categoryLabel(cat), systemImage: AppConstants.categorySymbol(cat)).tag(cat)
                     }
                 }
                 if filtersActive {
@@ -105,12 +107,12 @@ struct BrowseView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     if !sourceType.isEmpty {
-                        CategoryFilterChip(label: "\(AppConstants.sourceLabel(sourceType)) ×", selected: true) { sourceType = "" }
+                        CategoryFilterChip(label: "\(AppConstants.sourceLabel(sourceType)) ×", systemImage: AppConstants.sourceSymbol(sourceType), selected: true) { sourceType = "" }
                     }
                     if !category.isEmpty {
-                        CategoryFilterChip(label: "\(AppConstants.categoryLabel(category)) ×", selected: true) { category = "" }
+                        CategoryFilterChip(label: "\(AppConstants.categoryLabel(category)) ×", systemImage: AppConstants.categorySymbol(category), selected: true) { category = "" }
                     }
-                    CategoryFilterChip(label: "Clear", selected: false) {
+                    CategoryFilterChip(label: "Clear", systemImage: "xmark.circle", selected: false) {
                         sourceType = ""
                         category = ""
                     }
@@ -194,12 +196,19 @@ struct BrowseView: View {
 
 private struct CategoryFilterChip: View {
     let label: String
+    let systemImage: String?
     let selected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(label)
+            Label {
+                Text(label)
+            } icon: {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+            }
                 .font(.caption.weight(selected ? .bold : .regular))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)

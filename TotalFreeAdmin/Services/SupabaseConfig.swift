@@ -39,6 +39,11 @@ enum AppConstants {
         "sports": "⚽", "food": "☕", "clothing": "🧥", "learning": "🎓",
     ]
 
+    static let categorySymbols: [String: String] = [
+        "furniture": "chair", "home": "house", "school": "books.vertical", "kids": "figure.2.and.child.holdinghands",
+        "sports": "soccerball", "food": "cup.and.saucer", "clothing": "tshirt", "learning": "graduationcap",
+    ]
+
     static let conditions = ["new", "like_new", "good", "fair", "for_parts"]
     static let conditionLabels: [String: String] = [
         "new": "New", "like_new": "Like new", "good": "Good",
@@ -60,8 +65,17 @@ enum AppConstants {
         SourceBucket(id: "sponsored", label: "Business"),
     ]
 
+    static let sourceSymbols: [String: String] = [
+        "totalfree": "person.2", "partner": "building.2", "sponsored": "storefront",
+        "learning": "network", "external": "network",
+    ]
+
     static func categoryLabel(_ key: String) -> String {
         categoryLabels[key] ?? key.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    static func categorySymbol(_ key: String) -> String {
+        categorySymbols[key] ?? "tag"
     }
 
     static func conditionLabel(_ key: String?) -> String? {
@@ -71,5 +85,9 @@ enum AppConstants {
 
     static func sourceLabel(_ sourceType: String) -> String {
         sourceLabels[sourceType] ?? "Listing"
+    }
+
+    static func sourceSymbol(_ sourceType: String) -> String {
+        sourceSymbols[sourceType] ?? "tag"
     }
 }
