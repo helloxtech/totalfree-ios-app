@@ -20,10 +20,13 @@ struct ReportsView: View {
                 List {
                     if !openRows.isEmpty {
                         Section("Open (\(openRows.count))") {
+                            Text("These actions close the report record only. Open the listing if the public post should be changed or taken down.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             ForEach(openRows) { row in
                                 reportRow(row)
                                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button { resolve(row, "removed") } label: { Label("Remove", systemImage: "trash") }.tint(.red)
+                                        Button { resolve(row, "removed") } label: { Label("Handled", systemImage: "checkmark.seal") }.tint(.red)
                                         Button { resolve(row, "warned") } label: { Label("Warn", systemImage: "exclamationmark.triangle") }.tint(.orange)
                                         Button { resolve(row, "dismissed") } label: { Label("Dismiss", systemImage: "checkmark") }.tint(.gray)
                                     }

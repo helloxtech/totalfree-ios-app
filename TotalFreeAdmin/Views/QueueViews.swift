@@ -97,7 +97,7 @@ struct ModerationDetailView: View {
                     Color(.secondarySystemFill)
                         .overlay {
                             AsyncImage(url: URL(string: url)) { phase in
-                                if let img = phase.image { img.resizable().scaledToFill() }
+                                if let img = phase.image { listingImage(img) }
                                 else if phase.error != nil { Image(systemName: "photo").foregroundStyle(.secondary) }
                                 else { ProgressView() }
                             }
@@ -168,6 +168,22 @@ struct ModerationDetailView: View {
         .confirmationDialog("Reject this listing?", isPresented: $confirmReject, titleVisibility: .visible) {
             Button("Reject", role: .destructive) { Task { await moderate("rejected") } }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder
+    private func listingImage(_ image: Image) -> some View {
+        if listing.prefersContainedImage {
+            image
+                .resizable()
+                .scaledToFit()
+                .padding(14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

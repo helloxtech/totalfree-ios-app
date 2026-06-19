@@ -157,12 +157,28 @@ struct ListingDetailView: View {
         Color(.secondarySystemFill)
             .overlay {
                 AsyncImage(url: URL(string: url)) { phase in
-                    if let img = phase.image { img.resizable().scaledToFill() }
+                    if let img = phase.image { listingImage(img) }
                     else if phase.error != nil { Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary) }
                     else { ProgressView() }
                 }
             }
             .clipped()
+    }
+
+    @ViewBuilder
+    private func listingImage(_ image: Image) -> some View {
+        if listing.prefersContainedImage {
+            image
+                .resizable()
+                .scaledToFit()
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     // MARK: Location / map
@@ -268,7 +284,13 @@ struct ListingDetailView: View {
                     }
                 } else {
                     Button {
-                        if appState.isAuthed { showRequest = true } else { showAuth = true }
+                        if !appState.isAuthed {
+                            showAuth = true
+                        } else if !appState.isVerified {
+                            appState.infoMessage = "Please confirm your email before sending requests."
+                        } else {
+                            showRequest = true
+                        }
                     } label: {
                         Label(listing.isWanted ? "Offer to help" : "Ask for this", systemImage: "hand.raised")
                             .bold().frame(maxWidth: .infinity)
@@ -465,7 +487,7 @@ private struct RequestSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Send") { send() }.disabled(sending || message.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Send") { send() }.disabled(sending || !appState.isVerified || message.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
@@ -473,6 +495,10 @@ private struct RequestSheet: View {
 
     private func send() {
         guard let uid = appState.userId else { return }
+        guard appState.isVerified else {
+            appState.infoMessage = "Please confirm your email before sending requests."
+            return
+        }
         sending = true
         Task {
             let ok = await appState.perform {

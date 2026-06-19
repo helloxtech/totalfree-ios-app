@@ -4,7 +4,7 @@ import UIKit
 
 struct AccountView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var showAuth = false
+    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.bright.rawValue
     @State private var editingName = false
     @State private var nameDraft = ""
     @State private var avatarItem: PhotosPickerItem?
@@ -16,16 +16,10 @@ struct AccountView: View {
                 if appState.isAuthed {
                     signedIn
                 } else {
-                    SignInPrompt(
-                        title: "Welcome to Total Free",
-                        message: "Browse freely without an account. Sign in to post, request, and get alerts.",
-                        systemImage: "person.crop.circle"
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    signedOut
                 }
             }
             .navigationTitle("Account")
-            .sheet(isPresented: $showAuth) { AuthView() }
         }
     }
 
@@ -122,6 +116,8 @@ struct AccountView: View {
                 }
             }
 
+            appearanceSection
+
             if !appState.isVerified {
                 Section {
                     InfoCallout(
@@ -157,6 +153,44 @@ struct AccountView: View {
             Button("Cancel", role: .cancel) {}
         }
         .task { await appState.refreshGifts(); await appState.refreshEntityKind(); await appState.refreshBadges() }
+    }
+
+    private var signedOut: some View {
+        List {
+            Section {
+                SignInPrompt(
+                    title: "Welcome to Total Free",
+                    message: "Browse freely without an account. Sign in to post, request, and get alerts.",
+                    systemImage: "person.crop.circle"
+                )
+                .frame(maxWidth: .infinity)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            }
+
+            appearanceSection
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Theme", systemImage: "circle.lefthalf.filled")
+                    .font(.subheadline.weight(.semibold))
+                Picker("Theme", selection: $appearanceRaw) {
+                    ForEach(AppAppearance.allCases) { option in
+                        Label(option.label, systemImage: option.systemImage)
+                            .tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text("Bright is the default. Dark keeps the same Total Free layout with a low-light color scheme.")
+        }
     }
 
     @ViewBuilder

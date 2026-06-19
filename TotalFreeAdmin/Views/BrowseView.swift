@@ -216,7 +216,7 @@ struct BrowseView: View {
         let result = await appState.load {
             try await $0.searchListings(
                 text: query, city: "", category: category,
-                sourceType: sourceType, kind: kind, limit: 48
+                sourceType: sourceType, kind: kind, excludeCategories: ["learning"], limit: 48
             )
         }
         if let result { listings = result }
@@ -336,7 +336,7 @@ private struct BrowseListingTile: View {
                     AsyncImage(url: u) { phase in
                         switch phase {
                         case .success(let image):
-                            image.resizable().scaledToFill()
+                            listingImage(image)
                         case .failure:
                             placeholder
                         case .empty:
@@ -355,6 +355,22 @@ private struct BrowseListingTile: View {
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color(.separator).opacity(0.45)))
         }
         .aspectRatio(1, contentMode: .fit)
+    }
+
+    @ViewBuilder
+    private func listingImage(_ image: Image) -> some View {
+        if listing.prefersContainedImage {
+            image
+                .resizable()
+                .scaledToFit()
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     private var placeholder: some View {
@@ -505,7 +521,8 @@ private struct BrowseMapView: View {
         let result = await appState.load {
             try await $0.searchListingsInBounds(
                 minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng,
-                text: query, category: category, sourceType: sourceType, kind: kind, limit: 300
+                text: query, category: category, sourceType: sourceType, kind: kind,
+                excludeCategories: ["learning"], limit: 300
             )
         }
         if let result { pins = result }
@@ -519,6 +536,7 @@ private struct BrowseMapView: View {
             .background(colorForSource(listing.sourceType), in: Circle())
             .overlay(Circle().stroke(.white, lineWidth: 1.5))
             .shadow(radius: 1)
+            .accessibilityLabel(mapPinAccessibilityLabel(for: listing))
     }
 
     private func coordinate(for listing: Listing) -> CLLocationCoordinate2D {
@@ -531,6 +549,12 @@ private struct BrowseMapView: View {
         let dLat = (Double(h % 400) / 400.0 - 0.5) * 0.004        // ~±220m
         let dLng = (Double((h / 400) % 400) / 400.0 - 0.5) * 0.004
         return CLLocationCoordinate2D(latitude: lat + dLat, longitude: lng + dLng)
+    }
+
+    private func mapPinAccessibilityLabel(for listing: Listing) -> String {
+        let category = AppConstants.categoryLabel(listing.category)
+        let place = [listing.area, listing.city].compactMap { $0 }.first ?? "nearby"
+        return "\(listing.title), \(category), \(place)"
     }
 
     /// Stable across launches (Swift's String.hashValue is per-process randomized).

@@ -223,6 +223,7 @@ private struct MessageGroup: Identifiable {
     var id: String { listingId }
     var title: String { requests.first?.itemTitle ?? "Listing" }
     var imageUrl: String? { requests.first?.listings?.imageUrl }
+    var prefersContainedImage: Bool { requests.first?.listings?.prefersContainedImage ?? false }
     var latestActivityAt: String? { requests.first?.latestActivityAt }
     var count: Int { requests.count }
 }
@@ -236,7 +237,7 @@ private struct MessageGroupRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ListingThumb(url: group.imageUrl, size: 48)
+            ListingThumb(url: group.imageUrl, size: 48, contained: group.prefersContainedImage)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(group.title)

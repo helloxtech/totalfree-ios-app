@@ -6,6 +6,16 @@ enum Theme {
     static let accent = Color(red: 0.13, green: 0.55, blue: 0.40) // community green
 }
 
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case bright
+    case dark
+
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+    var colorScheme: ColorScheme { self == .dark ? .dark : .light }
+    var systemImage: String { self == .dark ? "moon.fill" : "sun.max.fill" }
+}
+
 // MARK: - Date helpers
 
 private let isoFractional: ISO8601DateFormatter = {
@@ -110,13 +120,14 @@ struct StatusBadge: View {
 struct ListingThumb: View {
     let url: String?
     var size: CGFloat = 64
+    var contained: Bool = false
 
     var body: some View {
         Group {
             if let url, let u = URL(string: url) {
                 AsyncImage(url: u) { phase in
                     switch phase {
-                    case .success(let img): img.resizable().scaledToFill()
+                    case .success(let img): listingImage(img)
                     case .failure: placeholder
                     case .empty: ProgressView()
                     @unknown default: placeholder
@@ -129,6 +140,22 @@ struct ListingThumb: View {
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func listingImage(_ image: Image) -> some View {
+        if contained {
+            image
+                .resizable()
+                .scaledToFit()
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     private var placeholder: some View {
@@ -144,7 +171,7 @@ struct ListingCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            ListingThumb(url: listing.imageUrl)
+            ListingThumb(url: listing.imageUrl, contained: listing.prefersContainedImage)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
                     if listing.isWanted {

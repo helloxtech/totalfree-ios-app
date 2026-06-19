@@ -63,7 +63,7 @@ struct PostView: View {
                 Section {
                     InfoCallout(
                         title: "Confirm your email to post",
-                        message: "Check your inbox for a confirmation link. You can fill this out now; posting unlocks once you're verified.",
+                        message: "Check your inbox for a confirmation link. Posting unlocks once you're verified.",
                         systemImage: "envelope.badge"
                     )
                     .listRowInsets(EdgeInsets())
@@ -148,6 +148,11 @@ struct PostView: View {
                     }
                 }
                 .disabled(!canSubmit || submitting)
+                if let submitHint {
+                    Text(submitHint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .navigationTitle(kind == "wanted" ? "Post a wanted" : "Post a free item")
@@ -194,7 +199,23 @@ struct PostView: View {
     }
 
     private var canSubmit: Bool {
-        !title.trimmingCharacters(in: .whitespaces).isEmpty
+        let hasTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+        let hasDescription = description.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10
+        let hasPlace = coordinate != nil ||
+            !area.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return appState.isVerified && hasTitle && hasDescription && hasPlace
+    }
+
+    private var submitHint: String? {
+        if !appState.isVerified { return "Confirm your email before posting." }
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).count < 3 { return "Add a clear title." }
+        if description.trimmingCharacters(in: .whitespacesAndNewlines).count < 10 { return "Add a sentence or two of detail." }
+        let hasPlace = coordinate != nil ||
+            !area.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if !hasPlace { return "Add a neighbourhood, city, or map pin." }
+        return nil
     }
 
     private func loadPhotos(_ items: [PhotosPickerItem]) async {
@@ -212,6 +233,10 @@ struct PostView: View {
 
     private func submit() {
         guard let uid = appState.userId else { return }
+        guard appState.isVerified else {
+            appState.infoMessage = "Please confirm your email before posting."
+            return
+        }
         submitting = true
         let neededByString: String? = {
             guard kind == "wanted", hasNeededBy else { return nil }

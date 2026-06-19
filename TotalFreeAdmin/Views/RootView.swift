@@ -90,8 +90,11 @@ struct StaffHubView: View {
                     }
                 }
 
-                if appState.can(Perm.analyticsView) || appState.can(Perm.userView) {
+                if appState.can(Perm.messageReadAny) || appState.can(Perm.analyticsView) || appState.can(Perm.userView) {
                     Section("Oversight") {
+                        if appState.can(Perm.messageReadAny) {
+                            hubLink("Message oversight", "bubble.left.and.bubble.right", .teal) { ConversationsView() }
+                        }
                         if appState.can(Perm.analyticsView) {
                             hubLink("Analytics", "chart.bar", .green) { AnalyticsView() }
                         }

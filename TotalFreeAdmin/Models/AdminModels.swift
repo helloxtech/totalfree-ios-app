@@ -117,6 +117,7 @@ struct Listing: Codable, Identifiable, Equatable {
     let lng: Double?
     let imageUrl: String?
     let imageUrls: [String]?
+    let imageFit: String?
     let externalUrl: String?
     let sourceLabel: String?
     let status: String
@@ -143,6 +144,13 @@ struct Listing: Codable, Identifiable, Equatable {
     var categoryLabel: String { AppConstants.categoryLabel(category) }
     var conditionLabel: String? { AppConstants.conditionLabel(condition) }
 
+    var prefersContainedImage: Bool {
+        let fit = imageFit?.lowercased()
+        if fit == "contain" { return true }
+        if fit == "cover" { return false }
+        return ["partner", "sponsored", "learning", "external"].contains(sourceType)
+    }
+
     /// All photos to show (cover first); falls back to the single image_url.
     var galleryUrls: [String] {
         if let imageUrls, !imageUrls.isEmpty { return imageUrls }
@@ -157,8 +165,17 @@ struct ListingRef: Codable, Equatable {
     let title: String?
     let publicId: Int?
     let imageUrl: String?
+    let imageFit: String?
     let category: String?
     let sourceType: String?
+
+    var prefersContainedImage: Bool {
+        let fit = imageFit?.lowercased()
+        if fit == "contain" { return true }
+        if fit == "cover" { return false }
+        guard let sourceType else { return false }
+        return ["partner", "sponsored", "learning", "external"].contains(sourceType)
+    }
 }
 
 struct RequestPersonRef: Codable, Equatable {

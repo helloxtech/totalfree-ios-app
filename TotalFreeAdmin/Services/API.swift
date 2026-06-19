@@ -9,7 +9,7 @@ extension SupabaseClient {
 
     private var listingSelect: String { SupabaseConfig.listingSelect }
     private var requestSelect: String {
-        "*,listings(title,image_url,category,source_type),requester:requester_id(id,name),owner:owner_id(id,name)"
+        "*,listings(title,image_url,image_fit,category,source_type),requester:requester_id(id,name),owner:owner_id(id,name)"
     }
 
     // MARK: Listings (public browse)
@@ -23,10 +23,12 @@ extension SupabaseClient {
 
     func searchListings(
         text: String = "", city: String = "", category: String = "",
-        sourceType: String = "", kind: String = "", limit: Int = 48, offset: Int = 0
+        sourceType: String = "", kind: String = "", excludeCategories: [String] = [],
+        limit: Int = 48, offset: Int = 0
     ) async throws -> [Listing] {
         var q = "/rest/v1/listings?select=\(listingSelect)&status=eq.active&order=created_at.desc&limit=\(limit)&offset=\(offset)"
         if !category.isEmpty { q += "&category=eq.\(category)" }
+        if category.isEmpty, !excludeCategories.isEmpty { q += "&category=not.in.(\(excludeCategories.joined(separator: ",")))" }
         if !sourceType.isEmpty { q += "&source_type=eq.\(sourceType)" }
         if !kind.isEmpty { q += "&listing_kind=eq.\(kind)" }
         let s = text.pgSanitized
@@ -48,12 +50,13 @@ extension SupabaseClient {
     func searchListingsInBounds(
         minLat: Double, maxLat: Double, minLng: Double, maxLng: Double,
         text: String = "", category: String = "", sourceType: String = "", kind: String = "",
-        limit: Int = 300
+        excludeCategories: [String] = [], limit: Int = 300
     ) async throws -> [Listing] {
         var q = "/rest/v1/listings?select=\(listingSelect)&status=eq.active"
         q += "&lat=gte.\(minLat)&lat=lte.\(maxLat)&lng=gte.\(minLng)&lng=lte.\(maxLng)"
         q += "&order=created_at.desc&limit=\(limit)"
         if !category.isEmpty { q += "&category=eq.\(category)" }
+        if category.isEmpty, !excludeCategories.isEmpty { q += "&category=not.in.(\(excludeCategories.joined(separator: ",")))" }
         if !sourceType.isEmpty { q += "&source_type=eq.\(sourceType)" }
         if !kind.isEmpty { q += "&listing_kind=eq.\(kind)" }
         let s = text.pgSanitized
