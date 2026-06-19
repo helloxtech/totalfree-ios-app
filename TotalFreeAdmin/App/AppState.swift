@@ -343,6 +343,10 @@ final class AppState: ObservableObject {
 
     private func message(for error: Error) -> String {
         let text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        if text.localizedCaseInsensitiveContains("email rate limit exceeded")
+            || text.localizedCaseInsensitiveContains("rate limit") {
+            return "Too many confirmation emails were sent. Please wait a bit and try again."
+        }
         if text.localizedCaseInsensitiveContains("Unexpected status code returned from hook") {
             return "We couldn't send the confirmation email. Please try again in a moment."
         }

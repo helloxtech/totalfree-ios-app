@@ -7,6 +7,9 @@
 - Google, Apple, Microsoft, and Facebook sign-in buttons on the native auth sheet.
 - Social sign-in rows now use provider logo assets instead of generic system icons.
 - Email join now requires confirming the password before account creation.
+- Email verification now uses the shared Supabase Auth custom SMTP setup through
+  Resend, currently sending from `Total Free <totalfree@helloxtech.com>`.
+- Email rate-limit failures now show a user-readable confirmation-email message.
 - Email hook failures now show a user-readable confirmation-email message.
 - App bundle metadata now uses the user-facing name `Total Free` instead of the
   internal target name in iOS permission prompts.
@@ -21,7 +24,8 @@
 ### Changed
 
 - Messages now open as item groups first, then requester/request rows, then the conversation thread.
-- Sign-up verification uses the shared Supabase Auth email flow with the TotalFree Resend hook and a `totalfree.ca` confirmation redirect.
+- Sign-up verification uses the shared Supabase Auth email flow with the Total Free
+  confirmation redirect.
 
 ## Unreleased — 2026-06-16 — Source-linked listing actions
 

@@ -36,8 +36,9 @@ Members post from **My Stuff** (the **+ New post** button), not a separate tab.
 - **Mirrors** the web app's data layer (`TotalFree-Claude/src/lib/api.js`) so both
   clients speak to the database the same way.
 - **Auth emails:** sign-up still goes through Supabase Auth. Confirmation emails
-  are sent by the shared `TotalFree-Claude/supabase/functions/send-email` Auth hook
-  via Resend; the iOS signup sets the confirmation redirect to `https://totalfree.ca/`.
+  are sent through Supabase custom SMTP backed by Resend, currently from
+  `Total Free <totalfree@helloxtech.com>`; the iOS signup sets the confirmation
+  redirect to `https://totalfree.ca/`.
 - **Social sign-in:** Google, Apple, Microsoft, and Facebook start from
   `https://totalfree.ca/auth/mobile-start` so iOS permission prompts show
   `totalfree.ca`, then return through `https://totalfree.ca/auth/mobile-callback`,
