@@ -82,7 +82,8 @@ struct MyStuffView: View {
         Picker("Status", selection: $statusFilter) {
             Text("All").tag("all")
             Text("Active").tag("active")
-            Text("Pending").tag("pending_review")
+            Text("Pickup").tag("claimed")
+            Text("In review").tag("pending_review")
             Text("Closed").tag("closed")
         }
         .pickerStyle(.segmented)
@@ -132,6 +133,7 @@ struct MyStuffView: View {
     private var filtered: [Listing] {
         switch statusFilter {
         case "active": return listings.filter { $0.status == "active" }
+        case "claimed": return listings.filter { $0.status == "claimed" }
         case "pending_review": return listings.filter { $0.status == "pending_review" }
         case "closed": return listings.filter { ["rejected", "removed", "completed", "archived"].contains($0.status) }
         default: return listings
@@ -339,7 +341,7 @@ struct RequestThreadView: View {
     @State private var loading = false
     @State private var confirmComplete = false
     @State private var showPhotoPicker = false
-    @State private var photoItem: PhotosPickerItem?
+    @State private var photoItems: [PhotosPickerItem] = []
     @State private var showLocationPicker = false
     @State private var sending = false
 
@@ -405,11 +407,11 @@ struct RequestThreadView: View {
             if !readOnly { await appState.markNotificationsForRequest(request.id) }
         }
         .refreshable { await loadMessages() }
-        .confirmationDialog("Mark this completed?", isPresented: $confirmComplete, titleVisibility: .visible) {
-            Button("Mark completed") { Task { await setStatus("completed") } }
+        .confirmationDialog("Mark this as picked up?", isPresented: $confirmComplete, titleVisibility: .visible) {
+            Button("Mark picked up") { Task { await setStatus("completed") } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Do this once the item has changed hands. You can reopen it later if needed.")
+            Text("Use this after the item has changed hands. You can reopen the pickup if needed.")
         }
     }
 
@@ -418,7 +420,7 @@ struct RequestThreadView: View {
         HStack(spacing: 10) {
             if status == "pending" || status == "declined" {
                 Button { Task { await setStatus("accepted") } } label: {
-                    Label(status == "declined" ? "Accept instead" : "Accept", systemImage: "checkmark").frame(maxWidth: .infinity)
+                    Label(status == "declined" ? "Accept pickup" : "Accept pickup", systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -430,7 +432,7 @@ struct RequestThreadView: View {
             }
             if status == "accepted" {
                 Button { confirmComplete = true } label: {
-                    Label("Mark completed", systemImage: "checkmark.seal").frame(maxWidth: .infinity)
+                    Label("Mark picked up", systemImage: "checkmark.seal").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
             }
@@ -472,10 +474,10 @@ struct RequestThreadView: View {
         }
         .padding(10)
         .background(.bar)
-        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
-        .onChange(of: photoItem) { _, item in
-            guard let item else { return }
-            Task { await sendImage(item) }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 6, matching: .images)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task { await sendImages(items) }
         }
         .sheet(isPresented: $showLocationPicker) {
             LocationPickerView(initial: defaultCoordinate) { picked in
@@ -502,15 +504,23 @@ struct RequestThreadView: View {
         if ok { draft = ""; await loadMessages() }
     }
 
-    /// Send a photo: compress, upload to storage, then send its URL as the message.
-    private func sendImage(_ item: PhotosPickerItem) async {
+    /// Send one gallery message with up to six photos.
+    private func sendImages(_ items: [PhotosPickerItem]) async {
         guard let uid = appState.userId else { return }
         sending = true
-        defer { sending = false; photoItem = nil }
-        guard let raw = try? await item.loadTransferable(type: Data.self) else { return }
-        let data = UIImage(data: raw)?.jpegResized(maxDimension: 1280, quality: 0.8) ?? raw
-        guard let url = await appState.load({ try await $0.uploadImage(data, contentType: "image/jpeg", ext: "jpg", userId: uid) }) else { return }
-        let ok = await appState.perform { try await $0.sendMessage(requestId: request.id, text: url, senderId: uid) }
+        defer { sending = false; photoItems = [] }
+        var urls: [String] = []
+        for item in items.prefix(6) {
+            guard let raw = try? await item.loadTransferable(type: Data.self) else { continue }
+            let data = UIImage(data: raw)?.jpegResized(maxDimension: 1280, quality: 0.8) ?? raw
+            if let url = await appState.load({ try await $0.uploadImage(data, contentType: "image/jpeg", ext: "jpg", userId: uid) }) {
+                urls.append(url)
+            }
+        }
+        guard !urls.isEmpty else { return }
+        let ok = await appState.perform {
+            try await $0.sendMessage(requestId: request.id, text: "", senderId: uid, kind: "image", imageUrls: urls)
+        }
         if ok { await loadMessages() }
     }
 
@@ -520,11 +530,12 @@ struct RequestThreadView: View {
         let lat = picked.coordinate.latitude, lng = picked.coordinate.longitude
         let candidates = [picked.area, picked.city].compactMap { $0 }.filter { !$0.isEmpty }
         let place = candidates.first ?? "Shared location"
-        let q = place.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let text = "📍 \(place)\nhttps://maps.apple.com/?ll=\(lat),\(lng)&q=\(q)"
+        let text = place
         sending = true
         defer { sending = false }
-        let ok = await appState.perform { try await $0.sendMessage(requestId: request.id, text: text, senderId: uid) }
+        let ok = await appState.perform {
+            try await $0.sendMessage(requestId: request.id, text: text, senderId: uid, kind: "location", lat: lat, lng: lng)
+        }
         if ok { await loadMessages() }
     }
 
@@ -547,18 +558,8 @@ private struct MessageBubble: View {
     }
 
     @ViewBuilder private var content: some View {
-        if let img = imageURL {
-            AsyncImage(url: img) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFit()
-                } else if phase.error != nil {
-                    textBubble
-                } else {
-                    ProgressView().frame(width: 160, height: 120)
-                }
-            }
-            .frame(maxWidth: 220, maxHeight: 260)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+        if !galleryURLs.isEmpty {
+            gallery
         } else if let loc = locationLink {
             Link(destination: loc.url) {
                 HStack(spacing: 8) {
@@ -575,6 +576,30 @@ private struct MessageBubble: View {
         }
     }
 
+    private var gallery: some View {
+        let columns = galleryURLs.count == 1
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+        return LazyVGrid(columns: columns, spacing: 4) {
+            ForEach(galleryURLs, id: \.self) { url in
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else if phase.error != nil {
+                        Image(systemName: "photo")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .frame(width: galleryURLs.count == 1 ? 220 : 108, height: galleryURLs.count == 1 ? 180 : 108)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .frame(maxWidth: 224)
+    }
+
     private var textBubble: some View {
         Text(message.text)
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -583,8 +608,15 @@ private struct MessageBubble: View {
             .foregroundStyle(mine ? .white : .primary)
     }
 
-    /// A message whose text is one of our uploaded image URLs → render the image.
-    private var imageURL: URL? {
+    private var galleryURLs: [URL] {
+        let urls = message.galleryUrls.compactMap(URL.init(string:))
+        if !urls.isEmpty { return urls }
+        if let legacy = legacyImageURL { return [legacy] }
+        return []
+    }
+
+    /// Back-compat: older iOS sent image URLs as plain text.
+    private var legacyImageURL: URL? {
         let t = message.text.lowercased()
         guard t.contains("/storage/v1/object/public/"),
               t.hasSuffix(".jpg") || t.hasSuffix(".jpeg") || t.hasSuffix(".png"),
@@ -594,6 +626,12 @@ private struct MessageBubble: View {
 
     /// A message carrying an Apple Maps link → render a tappable location chip.
     private var locationLink: (label: String, url: URL)? {
+        if message.kind == "location", let lat = message.lat, let lng = message.lng {
+            let label = message.text.isEmpty ? "View location" : message.text
+            let q = label.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            guard let url = URL(string: "https://maps.apple.com/?ll=\(lat),\(lng)&q=\(q)") else { return nil }
+            return (label, url)
+        }
         guard let r = message.text.range(of: "https://maps.apple.com/") else { return nil }
         let urlStr = String(message.text[r.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard let u = URL(string: urlStr) else { return nil }

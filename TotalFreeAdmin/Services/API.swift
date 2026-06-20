@@ -147,10 +147,27 @@ extension SupabaseClient {
         try await restGet("/rest/v1/messages?select=*&request_id=eq.\(requestId)&order=created_at.asc", as: [Message].self)
     }
 
-    func sendMessage(requestId: String, text: String, senderId: String) async throws {
+    func sendMessage(
+        requestId: String,
+        text: String,
+        senderId: String,
+        kind: String = "text",
+        imageUrls: [String] = [],
+        lat: Double? = nil,
+        lng: Double? = nil
+    ) async throws {
         try await restInsertNoReturn(
             "messages",
-            body: MessageInsert(request_id: requestId, sender_id: senderId, text: text)
+            body: MessageInsert(
+                request_id: requestId,
+                sender_id: senderId,
+                kind: kind,
+                text: text,
+                image_url: imageUrls.first,
+                image_urls: imageUrls.isEmpty ? nil : imageUrls,
+                lat: lat,
+                lng: lng
+            )
         )
     }
 
@@ -281,16 +298,42 @@ extension SupabaseClient {
     // MARK: Edit any listing (listing.edit.any)
 
     @discardableResult
-    func updateListing(id: String, title: String, description: String, category: String, condition: String?, resubmit: Bool = false) async throws -> Listing {
+    func updateListing(
+        id: String,
+        title: String,
+        description: String,
+        category: String,
+        condition: String?,
+        imageUrls: [String]? = nil,
+        resubmit: Bool = false
+    ) async throws -> Listing {
+        let cover = imageUrls?.first
         if resubmit {
             try await restPatchNoReturn(
                 "/rest/v1/listings?id=eq.\(id)",
-                body: ListingResubmitUpdate(title: title, description: description, category: category, condition: condition, status: "pending_review")
+                body: ListingResubmitUpdate(
+                    title: title,
+                    description: description,
+                    category: category,
+                    condition: condition,
+                    image_url: cover,
+                    image_urls: imageUrls,
+                    include_images: imageUrls != nil,
+                    status: "pending_review"
+                )
             )
         } else {
             try await restPatchNoReturn(
                 "/rest/v1/listings?id=eq.\(id)",
-                body: ListingEditUpdate(title: title, description: description, category: category, condition: condition)
+                body: ListingEditUpdate(
+                    title: title,
+                    description: description,
+                    category: category,
+                    condition: condition,
+                    image_url: cover,
+                    image_urls: imageUrls,
+                    include_images: imageUrls != nil
+                )
             )
         }
         guard let updated = try await fetchListing(id: id) else {

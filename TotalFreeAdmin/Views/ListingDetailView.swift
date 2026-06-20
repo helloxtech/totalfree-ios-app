@@ -248,7 +248,7 @@ struct ListingDetailView: View {
                 Button { Task { await archive() } } label: { Label("Archive", systemImage: "archivebox") }
             }
             if listing.status == "active" {
-                Button { Task { await setStatus("completed") } } label: { Label("Mark completed", systemImage: "checkmark.circle") }
+                Button { Task { await setStatus("completed") } } label: { Label("Mark picked up", systemImage: "checkmark.circle") }
             }
             if appState.can(Perm.listingDeleteOwn) {
                 Button(role: .destructive) { confirmDelete = true } label: { Label("Delete", systemImage: "trash") }
@@ -327,7 +327,7 @@ struct ListingDetailView: View {
         case "pending_review": "Waiting for review"
         case "rejected": "This post was rejected"
         case "active": "This is your listing"
-        case "completed": "Marked completed"
+        case "completed": "Picked up"
         case "removed": "Withdrawn"
         case "archived": "Archived"
         default: "Your listing"
@@ -354,7 +354,7 @@ struct ListingDetailView: View {
     private func setStatus(_ status: String) async {
         let ok = await appState.perform { try await $0.setListingStatus(id: listing.id, status: status) }
         if ok {
-            appState.infoMessage = status == "completed" ? "Marked completed." : "Listing withdrawn."
+            appState.infoMessage = status == "completed" ? "Marked picked up." : "Listing withdrawn."
             await refresh()
         }
     }

@@ -148,6 +148,7 @@ struct Listing: Codable, Identifiable, Equatable {
         let fit = imageFit?.lowercased()
         if fit == "contain" { return true }
         if fit == "cover" { return false }
+        if ownerId == nil, sourceLabel != nil { return true }
         return ["partner", "sponsored", "learning", "external"].contains(sourceType)
     }
 
@@ -206,8 +207,19 @@ struct Message: Codable, Identifiable, Equatable {
     let id: String
     let requestId: String
     let senderId: String
+    let kind: String?
     let text: String
+    let imageUrl: String?
+    let imageUrls: [String]?
+    let lat: Double?
+    let lng: Double?
     let createdAt: String?
+
+    var galleryUrls: [String] {
+        if let imageUrls, !imageUrls.isEmpty { return imageUrls }
+        if let imageUrl, !imageUrl.isEmpty { return [imageUrl] }
+        return []
+    }
 }
 
 // MARK: - Reports
@@ -455,7 +467,12 @@ struct RequestInsert: Encodable {
 struct MessageInsert: Encodable {
     let request_id: String
     let sender_id: String
+    let kind: String
     let text: String
+    let image_url: String?
+    let image_urls: [String]?
+    let lat: Double?
+    let lng: Double?
 }
 
 struct DeviceTokenInsert: Encodable {
@@ -484,8 +501,59 @@ struct ReviewCandidateParams: Encodable { let p_candidate: String; let p_approve
 struct ClaimListingParams: Encodable { let p_listing: String; let p_org_name: String; let p_website: String; let p_note: String }
 struct ResolveClaimParams: Encodable { let p_claim: String; let p_approve: Bool }
 struct SponsorStatusUpdate: Encodable { let status: String }
-struct ListingEditUpdate: Encodable { let title: String; let description: String; let category: String; let condition: String? }
-struct ListingResubmitUpdate: Encodable { let title: String; let description: String; let category: String; let condition: String?; let status: String }
+struct ListingEditUpdate: Encodable {
+    let title: String
+    let description: String
+    let category: String
+    let condition: String?
+    let image_url: String?
+    let image_urls: [String]?
+    let include_images: Bool
+
+    enum CodingKeys: String, CodingKey { case title, description, category, condition, image_url, image_urls }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(title, forKey: .title)
+        try c.encode(description, forKey: .description)
+        try c.encode(category, forKey: .category)
+        try c.encodeIfPresent(condition, forKey: .condition)
+        if include_images {
+            if let image_url { try c.encode(image_url, forKey: .image_url) }
+            else { try c.encodeNil(forKey: .image_url) }
+            if let image_urls { try c.encode(image_urls, forKey: .image_urls) }
+            else { try c.encodeNil(forKey: .image_urls) }
+        }
+    }
+}
+
+struct ListingResubmitUpdate: Encodable {
+    let title: String
+    let description: String
+    let category: String
+    let condition: String?
+    let image_url: String?
+    let image_urls: [String]?
+    let include_images: Bool
+    let status: String
+
+    enum CodingKeys: String, CodingKey { case title, description, category, condition, image_url, image_urls, status }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(title, forKey: .title)
+        try c.encode(description, forKey: .description)
+        try c.encode(category, forKey: .category)
+        try c.encodeIfPresent(condition, forKey: .condition)
+        if include_images {
+            if let image_url { try c.encode(image_url, forKey: .image_url) }
+            else { try c.encodeNil(forKey: .image_url) }
+            if let image_urls { try c.encode(image_urls, forKey: .image_urls) }
+            else { try c.encodeNil(forKey: .image_urls) }
+        }
+        try c.encode(status, forKey: .status)
+    }
+}
 struct ListingStatusUpdate: Encodable { let status: String }
 
 struct PasswordGrantBody: Encodable { let email: String; let password: String }

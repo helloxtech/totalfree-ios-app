@@ -176,15 +176,29 @@ struct PostView: View {
                 HStack(spacing: 8) {
                     ForEach(Array(imagesData.enumerated()), id: \.offset) { idx, data in
                         if let ui = UIImage(data: data) {
-                            ZStack(alignment: .topTrailing) {
-                                Image(uiImage: ui).resizable().scaledToFill()
-                                    .frame(width: 72, height: 72)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                if idx == 0 {
-                                    Text("Cover").font(.system(size: 8, weight: .bold))
-                                        .padding(.horizontal, 4).padding(.vertical, 1)
-                                        .background(Theme.accent, in: Capsule()).foregroundStyle(.white)
-                                        .padding(3)
+                            VStack(spacing: 5) {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: ui).resizable().scaledToFill()
+                                        .frame(width: 82, height: 82)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    Text(idx == 0 ? "Cover" : "\(idx + 1)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5).padding(.vertical, 2)
+                                        .background(idx == 0 ? Theme.accent : Color(.systemBackground), in: Capsule())
+                                        .foregroundStyle(idx == 0 ? .white : .secondary)
+                                        .padding(4)
+                                }
+                                HStack(spacing: 4) {
+                                    if idx != 0 {
+                                        Button("Cover") { makeCover(idx) }
+                                            .font(.caption2.bold())
+                                            .buttonStyle(.bordered)
+                                    }
+                                    Button(role: .destructive) { removePhoto(idx) } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.caption2.bold())
+                                    }
+                                    .buttonStyle(.bordered)
                                 }
                             }
                         }
@@ -231,6 +245,26 @@ struct PostView: View {
         imagesData = datas
     }
 
+    private func removePhoto(_ index: Int) {
+        guard imagesData.indices.contains(index) else { return }
+        imagesData.remove(at: index)
+        if photoItems.indices.contains(index) {
+            photoItems.remove(at: index)
+        } else if imagesData.isEmpty {
+            photoItems = []
+        }
+    }
+
+    private func makeCover(_ index: Int) {
+        guard imagesData.indices.contains(index) else { return }
+        let data = imagesData.remove(at: index)
+        imagesData.insert(data, at: 0)
+        if photoItems.indices.contains(index) {
+            let item = photoItems.remove(at: index)
+            photoItems.insert(item, at: 0)
+        }
+    }
+
     private func submit() {
         guard let uid = appState.userId else { return }
         guard appState.isVerified else {
@@ -273,7 +307,7 @@ struct PostView: View {
             }
             submitting = false
             if ok {
-                appState.infoMessage = "Posted! It'll appear once a moderator approves it."
+                appState.infoMessage = "Posted. Low-risk posts go live right away; others appear after review."
                 if asSheet { dismiss() } else { reset() }
             }
         }

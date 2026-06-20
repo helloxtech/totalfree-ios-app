@@ -88,15 +88,16 @@ struct StatusBadge: View {
     }
     private var label: String {
         switch status {
-        case "pending_review": "Pending"
+        case "pending_review": "In review"
         case "active": "Active"
         case "rejected": "Rejected"
         case "removed": "Removed"
         case "archived": "Archived"
-        case "claimed": "Claimed"
+        case "claimed": "Pickup pending"
         case "completed": "Completed"
         case "open": "Open"
-        case "accepted": "Accepted"
+        case "accepted": "Pickup pending"
+        case "pending": "Waiting for reply"
         case "declined": "Declined"
         case "cancelled": "Cancelled"
         case "dismissed": "Dismissed"
@@ -107,7 +108,7 @@ struct StatusBadge: View {
     private var color: Color {
         switch status {
         case "active", "accepted", "completed": .green
-        case "pending_review", "open": .orange
+        case "pending_review", "pending", "open": .orange
         case "rejected", "removed", "declined", "cancelled": .red
         case "warned": .yellow
         default: .secondary

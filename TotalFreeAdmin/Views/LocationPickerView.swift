@@ -18,6 +18,9 @@ struct LocationPickerView: View {
     @State private var camera: MapCameraPosition
     @State private var center: CLLocationCoordinate2D
     @State private var resolving = false
+    @State private var query = ""
+    @State private var searching = false
+    @State private var searchMessage: String?
 
     init(initial: CLLocationCoordinate2D, onPick: @escaping (PickedLocation) -> Void) {
         self.onPick = onPick
@@ -42,11 +45,35 @@ struct LocationPickerView: View {
                     .allowsHitTesting(false)
 
                 VStack {
-                    Text("Drag the map to place the pin on your neighbourhood")
-                        .font(.caption)
-                        .padding(8)
-                        .background(.thinMaterial, in: Capsule())
-                        .padding(.top, 8)
+                    VStack(spacing: 8) {
+                        Text("Drag the map to place the pin on your neighbourhood")
+                            .font(.caption)
+                            .padding(8)
+                            .background(.thinMaterial, in: Capsule())
+                        HStack(spacing: 8) {
+                            TextField("Search postcode or place", text: $query)
+                                .textFieldStyle(.roundedBorder)
+                                .submitLabel(.search)
+                                .onSubmit { search() }
+                            Button {
+                                search()
+                            } label: {
+                                if searching { ProgressView() } else { Text("Search").bold() }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(searching || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                        if let searchMessage {
+                            Text(searchMessage)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(10)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal)
+                    .padding(.top, 8)
                     Spacer()
                     VStack(spacing: 8) {
                         Text(String(format: "%.4f, %.4f", center.latitude, center.longitude))
@@ -85,6 +112,26 @@ struct LocationPickerView: View {
             ))
             resolving = false
             dismiss()
+        }
+    }
+
+    private func search() {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return }
+        searching = true
+        searchMessage = nil
+        CLGeocoder().geocodeAddressString(term) { places, error in
+            searching = false
+            guard error == nil, let coord = places?.first?.location?.coordinate else {
+                searchMessage = "No match found. Try a nearby street, city, or postcode."
+                return
+            }
+            center = coord
+            camera = .region(MKCoordinateRegion(
+                center: coord,
+                span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+            ))
+            searchMessage = "Found. Adjust the map if needed, then use this location."
         }
     }
 }
