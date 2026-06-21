@@ -90,6 +90,7 @@ struct Profile: Codable, Identifiable, Equatable {
     let role: String
     let phoneVerified: Bool?
     let avatarUrl: String?
+    let preferredLocale: String?
 
     var userRole: UserRole { UserRole(rawValue: role) ?? .user }
 }
@@ -276,6 +277,12 @@ struct AppNotification: Codable, Identifiable, Equatable {
         case "admin_org_claim_pending": "Organization claim needs review"
         default: title
         }
+    }
+
+    func localizedTitle(locale: String) -> String {
+        let key = "notification.\(type)"
+        let translated = L10n.text(key, locale: locale)
+        return translated == key ? displayTitle : translated
     }
 
     var icon: String {
@@ -492,6 +499,7 @@ struct ReportResolveUpdate: Encodable { let status: String; let reviewed_at: Str
 struct NotificationReadUpdate: Encodable { let read: Bool }
 struct ProfileNameUpdate: Encodable { let name: String }
 struct ProfileAvatarUpdate: Encodable { let avatar_url: String }
+struct ProfileLocaleUpdate: Encodable { let preferred_locale: String }
 
 struct ModerateListingParams: Encodable { let p_id: String; let p_status: String }
 struct SetUserRoleParams: Encodable { let target: String; let new_role: String }
@@ -559,6 +567,15 @@ struct ListingStatusUpdate: Encodable { let status: String }
 struct PasswordGrantBody: Encodable { let email: String; let password: String }
 struct RefreshTokenBody: Encodable { let refresh_token: String }
 struct SignUpBody: Encodable { let email: String; let password: String; let data: [String: String] }
+
+struct TranslateListingBody: Encodable { let listingId: String; let locale: String }
+struct ListingTranslation: Codable, Equatable {
+    let title: String?
+    let description: String?
+    let locale: String?
+    let source: String?
+    let provider: String?
+}
 
 // MARK: - Contributor recognition (entity-aware levels)
 

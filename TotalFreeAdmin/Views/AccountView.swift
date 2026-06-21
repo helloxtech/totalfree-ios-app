@@ -19,7 +19,7 @@ struct AccountView: View {
                     signedOut
                 }
             }
-            .navigationTitle("Account")
+            .navigationTitle(appState.t("account.title"))
         }
     }
 
@@ -53,10 +53,10 @@ struct AccountView: View {
                                 .background(Theme.accent.opacity(0.15), in: Capsule())
                                 .foregroundStyle(Theme.accent)
                             if appState.isVerified {
-                                Label("Verified", systemImage: "checkmark.seal.fill")
+                                Label(appState.t("account.verified"), systemImage: "checkmark.seal.fill")
                                     .font(.caption2).foregroundStyle(.green)
                             } else {
-                                Label("Unverified", systemImage: "exclamationmark.triangle")
+                                Label(appState.t("account.unverified"), systemImage: "exclamationmark.triangle")
                                     .font(.caption2).foregroundStyle(.orange)
                             }
                         }
@@ -107,15 +107,16 @@ struct AccountView: View {
                 }
             }
 
-            Section("Profile") {
+            Section(appState.t("account.profile")) {
                 Button {
                     nameDraft = appState.profile?.name ?? ""
                     editingName = true
                 } label: {
-                    Label("Edit display name", systemImage: "pencil")
+                    Label(appState.t("account.editName"), systemImage: "pencil")
                 }
             }
 
+            languageSection
             appearanceSection
 
             if !appState.isVerified {
@@ -134,7 +135,7 @@ struct AccountView: View {
                 Button(role: .destructive) {
                     appState.signOut()
                 } label: {
-                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                    Label(appState.t("account.signOut"), systemImage: "rectangle.portrait.and.arrow.right")
                 }
             } footer: {
                 Text("Total Free — a warm place to find and share genuinely free things across Metro Vancouver.")
@@ -159,8 +160,8 @@ struct AccountView: View {
         List {
             Section {
                 SignInPrompt(
-                    title: "Welcome to Total Free",
-                    message: "Browse freely without an account. Sign in to post, request, and get alerts.",
+                    title: appState.t("account.welcome"),
+                    message: appState.t("account.welcomeBody"),
                     systemImage: "person.crop.circle"
                 )
                 .frame(maxWidth: .infinity)
@@ -172,12 +173,29 @@ struct AccountView: View {
         }
     }
 
+    private var languageSection: some View {
+        Section {
+            Picker(appState.t("account.language"), selection: Binding(
+                get: { appState.appLanguage.rawValue },
+                set: { appState.setPreferredLocale($0) }
+            )) {
+                ForEach(AppLanguage.allCases) { language in
+                    Text("\(language.nativeName) (\(language.label))").tag(language.rawValue)
+                }
+            }
+        } header: {
+            Text(appState.t("account.language"))
+        } footer: {
+            Text(appState.t("account.languageHint"))
+        }
+    }
+
     private var appearanceSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
-                Label("Theme", systemImage: "circle.lefthalf.filled")
+                Label(appState.t("account.theme"), systemImage: "circle.lefthalf.filled")
                     .font(.subheadline.weight(.semibold))
-                Picker("Theme", selection: $appearanceRaw) {
+                Picker(appState.t("account.theme"), selection: $appearanceRaw) {
                     ForEach(AppAppearance.allCases) { option in
                         Label(option.label, systemImage: option.systemImage)
                             .tag(option.rawValue)
@@ -187,7 +205,7 @@ struct AccountView: View {
             }
             .padding(.vertical, 4)
         } header: {
-            Text("Appearance")
+            Text(appState.t("account.appearance"))
         } footer: {
             Text("Bright is the default. Dark keeps the same Total Free layout with a low-light color scheme.")
         }

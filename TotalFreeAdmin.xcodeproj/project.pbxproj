@@ -36,6 +36,7 @@
 		AA0000010000000000000030 /* EditListingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000030 /* EditListingView.swift */; };
 		AA0000010000000000000031 /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000031 /* LocationPickerView.swift */; };
 		AA0000010000000000000032 /* Loaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000032 /* Loaders.swift */; };
+		AA0000010000000000000033 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000033 /* Localization.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -71,6 +72,7 @@
 		AA0000020000000000000030 /* EditListingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditListingView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000031 /* LocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPickerView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000032 /* Loaders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Loaders.swift; sourceTree = "<group>"; };
+		AA0000020000000000000033 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -111,6 +113,7 @@
 			children = (
 				AA0000020000000000000001 /* TotalFreeAdminApp.swift */,
 				AA0000020000000000000002 /* AppState.swift */,
+				AA0000020000000000000033 /* Localization.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -248,6 +251,7 @@
 			files = (
 				AA0000010000000000000001 /* TotalFreeAdminApp.swift in Sources */,
 				AA0000010000000000000002 /* AppState.swift in Sources */,
+				AA0000010000000000000033 /* Localization.swift in Sources */,
 				AA0000010000000000000003 /* AdminModels.swift in Sources */,
 				AA0000010000000000000004 /* KeychainSessionStore.swift in Sources */,
 				AA0000010000000000000005 /* TotalFreeAPIClient.swift in Sources */,

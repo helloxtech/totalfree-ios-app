@@ -11,15 +11,15 @@ struct RootView: View {
     var body: some View {
         TabView {
             BrowseView()
-                .tabItem { Label("Browse", systemImage: "square.grid.2x2") }
+                .tabItem { Label(appState.t("tab.browse"), systemImage: "square.grid.2x2") }
 
             if appState.isAuthed {
                 MyStuffView()
-                    .tabItem { Label("My Posts", systemImage: "shippingbox") }
+                    .tabItem { Label(appState.t("tab.myPosts"), systemImage: "shippingbox") }
                     .badge(appState.myPostsActionableCount)
 
                 MessagesView()
-                    .tabItem { Label("Messages", systemImage: "bubble.left.and.bubble.right") }
+                    .tabItem { Label(appState.t("tab.messages"), systemImage: "bubble.left.and.bubble.right") }
                     .badge(appState.messagesUnreadCount)
             }
 
@@ -30,7 +30,7 @@ struct RootView: View {
             }
 
             AccountView()
-                .tabItem { Label("Account", systemImage: "person.crop.circle") }
+                .tabItem { Label(appState.t("tab.account"), systemImage: "person.crop.circle") }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, appState.isAuthed {

@@ -243,6 +243,14 @@ extension SupabaseClient {
         try await restPatchNoReturn("/rest/v1/profiles?id=eq.\(userId)", body: ProfileAvatarUpdate(avatar_url: url))
     }
 
+    func updateProfileLocale(userId: String, locale: String) async throws {
+        try await restPatchNoReturn("/rest/v1/profiles?id=eq.\(userId)", body: ProfileLocaleUpdate(preferred_locale: locale))
+    }
+
+    func translateListing(id: String, locale: String) async throws -> ListingTranslation {
+        try await invokeFunction("translate-listing", body: TranslateListingBody(listingId: id, locale: locale), as: ListingTranslation.self)
+    }
+
     // MARK: Admin users (Owner — set_user_role gated in SQL)
 
     func adminListUsers() async throws -> [AdminUserRow] {

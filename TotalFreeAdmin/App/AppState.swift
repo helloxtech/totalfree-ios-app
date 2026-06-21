@@ -27,6 +27,7 @@ final class AppState: ObservableObject {
     @Published private(set) var giftsGiven = 0
     @Published private(set) var entityKind = "Member"   // Member / Business / Organization
     @Published private(set) var badges: [AppBadge] = []
+    @Published var preferredLocale: String = UserDefaults.standard.string(forKey: "app.language") ?? Locale.preferredLanguages.first ?? "en"
 
     /// Live conversation activity (a new request, a new chat message) belongs in the
     /// Messages tab. Request status outcomes (accepted/declined/completed) are alerts
@@ -59,7 +60,7 @@ final class AppState: ObservableObject {
     /// Show the staff tab if the person holds any moderation/admin permission.
     var canSeeStaffArea: Bool { Perm.staffArea.contains { perms.contains($0) } }
     /// "Admin" for people who can manage users/roles; otherwise "Manage".
-    var staffAreaTitle: String { (can(Perm.userManage) || can(Perm.roleManage)) ? "Admin" : "Manage" }
+    var staffAreaTitle: String { (can(Perm.userManage) || can(Perm.roleManage)) ? t("staff.admin") : t("staff.manage") }
 
     /// Security-role label derived from EFFECTIVE PERMISSIONS (the source of truth;
     /// account type carries no authority). Shown on the Account screen.
@@ -69,6 +70,8 @@ final class AppState: ObservableObject {
         return "Member"
     }
     var displayName: String { profile?.name ?? session?.user?.displayName ?? "Neighbour" }
+    var appLanguage: AppLanguage { AppLanguage.normalize(preferredLocale) }
+    func t(_ key: String) -> String { L10n.text(key, locale: preferredLocale) }
 
     // MARK: - Session lifecycle
 
@@ -95,11 +98,11 @@ final class AppState: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            switch try await SupabaseClient().signUp(email: email, password: password, name: name) {
+            switch try await SupabaseClient().signUp(email: email, password: password, name: name, locale: appLanguage.rawValue) {
             case .session(let s):
                 await applySession(s)
             case .needsEmailVerification:
-                infoMessage = "Almost there — check your email to confirm your account, then sign in."
+                infoMessage = t("auth.verifyEmail")
             }
         } catch {
             alertMessage = message(for: error)
@@ -176,6 +179,21 @@ final class AppState: ObservableObject {
     func loadProfile() async {
         guard let uid = userId else { profile = nil; return }
         profile = try? await client().fetchProfile(userId: uid)
+        if let locale = profile?.preferredLocale {
+            setPreferredLocale(locale, persistRemote: false)
+        }
+    }
+
+    func setPreferredLocale(_ locale: String, persistRemote: Bool = true) {
+        let normalized = AppLanguage.normalize(locale).rawValue
+        preferredLocale = normalized
+        UserDefaults.standard.set(normalized, forKey: "app.language")
+        guard persistRemote, let uid = userId else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.perform { try await $0.updateProfileLocale(userId: uid, locale: normalized) }
+            await self.loadProfile()
+        }
     }
 
     func loadPerms() async {

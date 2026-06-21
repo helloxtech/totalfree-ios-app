@@ -87,14 +87,14 @@ struct SupabaseClient {
         return try decode(AuthSession.self, from: data)
     }
 
-    func signUp(email: String, password: String, name: String) async throws -> SignUpOutcome {
+    func signUp(email: String, password: String, name: String, locale: String = "en") async throws -> SignUpOutcome {
         let data = try await send(
             path: "/auth/v1/signup",
             method: "POST",
             query: Self.queryString([
                 URLQueryItem(name: "redirect_to", value: SupabaseConfig.emailConfirmationRedirectURL.absoluteString),
             ]),
-            body: SignUpBody(email: email, password: password, data: ["name": name]),
+            body: SignUpBody(email: email, password: password, data: ["name": name, "preferred_locale": locale]),
             authed: false
         )
         // Auto-confirm projects return a full session; confirmation-required
@@ -221,6 +221,16 @@ struct SupabaseClient {
 
     func restDeleteNoReturn(_ pathWithQuery: String) async throws {
         _ = try await sendRaw(path: pathWithQuery, method: "DELETE", bodyData: nil, prefer: "return=minimal")
+    }
+
+    func invokeFunction<T: Decodable, B: Encodable>(_ name: String, body: B, as type: T.Type) async throws -> T {
+        let data = try await sendRaw(
+            path: "/functions/v1/\(name)",
+            method: "POST",
+            bodyData: try Self.encoder.encode(body),
+            prefer: nil
+        )
+        return try decode(T.self, from: data)
     }
 
     // MARK: - RPC

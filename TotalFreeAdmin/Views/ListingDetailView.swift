@@ -14,6 +14,8 @@ struct ListingDetailView: View {
     @State private var showClaim = false
     @State private var confirmDelete = false
     @State private var geocoded: CLLocationCoordinate2D?
+    @State private var translation: ListingTranslation?
+    @State private var translating = false
 
     private var isOwner: Bool { listing.ownerId != nil && listing.ownerId == appState.userId }
     private var sourceURL: URL? {
@@ -29,6 +31,8 @@ struct ListingDetailView: View {
     private var canClaim: Bool {
         listing.ownerId == nil && ["partner", "external"].contains(listing.sourceType)
     }
+    private var displayTitle: String { translation?.title?.isEmpty == false ? translation!.title! : listing.title }
+    private var displayDescription: String { translation?.description?.isEmpty == false ? translation!.description! : listing.description }
 
     var body: some View {
         ScrollView {
@@ -49,7 +53,28 @@ struct ListingDetailView: View {
                     }
                 }
 
-                Text(listing.title).font(.title2.bold())
+                Text(displayTitle).font(.title2.bold())
+
+                if appState.appLanguage != .en {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button {
+                            Task { await toggleTranslation() }
+                        } label: {
+                            Label(
+                                translating ? appState.t("listing.translating") : (translation == nil ? appState.t("listing.translate") : appState.t("listing.original")),
+                                systemImage: "translate"
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(translating)
+
+                        if translation != nil {
+                            Text(appState.t("listing.machine"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
 
                 HStack(spacing: 10) {
                     CategoryChip(category: listing.category)
@@ -66,8 +91,8 @@ struct ListingDetailView: View {
                     }
                 }
 
-                if !listing.description.isEmpty {
-                    Text(listing.description).font(.body)
+                if !displayDescription.isEmpty {
+                    Text(displayDescription).font(.body)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -214,6 +239,19 @@ struct ListingDetailView: View {
         let item = MKMapItem(placemark: MKPlacemark(coordinate: c))
         item.name = listing.locationText
         item.openInMaps()
+    }
+
+    private func toggleTranslation() async {
+        if translation != nil {
+            translation = nil
+            return
+        }
+        translating = true
+        defer { translating = false }
+        let result = await appState.load {
+            try await $0.translateListing(id: listing.id, locale: appState.appLanguage.rawValue)
+        }
+        if let result { translation = result }
     }
 
     private func geocodeIfNeeded() async {

@@ -68,7 +68,7 @@ struct BrowseView: View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search free stuff", text: $query)
+                TextField(appState.t("browse.search"), text: $query)
                     .submitLabel(.search)
                     .onSubmit { Task { await reload() } }
                 if !query.isEmpty {
@@ -81,33 +81,33 @@ struct BrowseView: View {
             .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 11))
 
             Menu {
-                Picker("Source", selection: $sourceType) {
-                    Label("All sources", systemImage: "person.3").tag("")
+                Picker(appState.t("browse.source"), selection: $sourceType) {
+                    Label(appState.t("browse.allSources"), systemImage: "person.3").tag("")
                     ForEach(AppConstants.sourceBuckets) { b in
                         Label(b.label, systemImage: AppConstants.sourceSymbol(b.id)).tag(b.id)
                     }
                 }
-                Picker("Category", selection: $category) {
-                    Label("All categories", systemImage: "square.grid.2x2").tag("")
+                Picker(appState.t("browse.category"), selection: $category) {
+                    Label(appState.t("browse.allCategories"), systemImage: "square.grid.2x2").tag("")
                     ForEach(AppConstants.browseCategories, id: \.self) { cat in
                         Label(AppConstants.categoryLabel(cat), systemImage: AppConstants.categorySymbol(cat)).tag(cat)
                     }
                 }
                 if filtersActive {
-                    Button("Clear filters", role: .destructive) {
+                    Button(appState.t("browse.clearFilters"), role: .destructive) {
                         sourceType = ""
                         category = ""
                     }
                 }
             } label: {
-                Label(filtersActive ? "Filters \(activeFilterCount)" : "Filters", systemImage: filtersActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                Label(filtersActive ? "\(appState.t("browse.filters")) \(activeFilterCount)" : appState.t("browse.filters"), systemImage: filtersActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                     .font(.subheadline.weight(.semibold))
                     .frame(height: 42)
                     .padding(.horizontal, 10)
                     .background(filtersActive ? Theme.accent.opacity(0.15) : Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 11))
                     .foregroundStyle(filtersActive ? Theme.accent : .primary)
             }
-            .accessibilityLabel("Filters")
+            .accessibilityLabel(appState.t("browse.filters"))
         }
         .padding(.horizontal)
     }
@@ -115,13 +115,13 @@ struct BrowseView: View {
     private var quickPostActions: some View {
         HStack(spacing: 10) {
             Button { postShortcut = .offer } label: {
-                Label("Give away", systemImage: "gift.fill")
+                Label(appState.t("browse.give"), systemImage: "gift.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(BrowseQuickPostButtonStyle(primary: true))
 
             Button { postShortcut = .wanted } label: {
-                Label("Request", systemImage: "hand.raised.fill")
+                Label(appState.t("browse.request"), systemImage: "hand.raised.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(BrowseQuickPostButtonStyle(primary: false))
@@ -141,7 +141,7 @@ struct BrowseView: View {
                     if !category.isEmpty {
                         CategoryFilterChip(label: "\(AppConstants.categoryLabel(category)) ×", systemImage: AppConstants.categorySymbol(category), selected: true) { category = "" }
                     }
-                    CategoryFilterChip(label: "Clear", systemImage: "xmark.circle", selected: false) {
+                    CategoryFilterChip(label: appState.t("browse.clearFilters"), systemImage: "xmark.circle", selected: false) {
                         sourceType = ""
                         category = ""
                     }
@@ -153,17 +153,17 @@ struct BrowseView: View {
 
     private var resultsBar: some View {
         HStack(spacing: 12) {
-            Text(listings.isEmpty ? "Free items" : "\(listings.count) free item\(listings.count == 1 ? "" : "s")")
+            Text(listings.isEmpty ? appState.t("browse.freeItems") : "\(listings.count) \(appState.t("browse.freeItems").lowercased())")
                 .font(.headline)
             Spacer()
             HStack(spacing: 8) {
                 Button { withAnimation(.easeInOut(duration: 0.15)) { showMap = false } } label: {
-                    Label("List", systemImage: "square.grid.2x2")
+                    Label(appState.t("browse.list"), systemImage: "square.grid.2x2")
                 }
                 .buttonStyle(BrowseModeButtonStyle(active: !showMap))
 
                 Button { withAnimation(.easeInOut(duration: 0.15)) { showMap = true } } label: {
-                    Label("Map", systemImage: "mappin")
+                    Label(appState.t("browse.map"), systemImage: "mappin")
                 }
                 .buttonStyle(BrowseModeButtonStyle(active: showMap))
             }
@@ -180,12 +180,12 @@ struct BrowseView: View {
                 if showMap {
                     BrowseMapView(query: query, category: category, sourceType: sourceType, kind: kind, selection: $mapSelection)
                 } else if loading && listings.isEmpty {
-                    ProgressView("Finding free things…")
+                    ProgressView(appState.t("browse.loading"))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if listings.isEmpty {
                     EmptyState(
-                        title: "Nothing here yet",
-                        message: "Try a different search or filter. New free items appear as neighbours post them.",
+                        title: appState.t("browse.emptyTitle"),
+                        message: appState.t("browse.emptyMessage"),
                         systemImage: "gift"
                     )
                 } else {

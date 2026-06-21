@@ -11,8 +11,8 @@ struct NotificationsView: View {
             Group {
                 if appState.alertNotifications.isEmpty {
                     EmptyState(
-                        title: "You're all caught up",
-                        message: "Alerts about your posts and requests show up here. Conversations live in Messages.",
+                        title: appState.t("alerts.emptyTitle"),
+                        message: appState.t("alerts.emptyMessage"),
                         systemImage: "bell"
                     )
                 } else {
@@ -27,7 +27,7 @@ struct NotificationsView: View {
                                 Button(role: .destructive) {
                                     Task { await appState.deleteNotification(note.id) }
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    Label(appState.t("alerts.delete"), systemImage: "trash")
                                 }
                             }
                         }
@@ -35,16 +35,16 @@ struct NotificationsView: View {
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Alerts")
+            .navigationTitle(appState.t("alerts.title"))
             .toolbar {
                 if presentedModally {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Done") { dismiss() }
+                        Button(appState.t("alerts.done")) { dismiss() }
                     }
                 }
                 if appState.unreadCount > 0 {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Mark all read") { Task { await appState.markAllAlertsRead() } }
+                        Button(appState.t("alerts.markAll")) { Task { await appState.markAllAlertsRead() } }
                     }
                 }
             }
@@ -59,7 +59,7 @@ struct NotificationsView: View {
                 .foregroundStyle(note.read ? .secondary : Theme.accent)
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 3) {
-                Text(note.displayTitle)
+                Text(note.localizedTitle(locale: appState.preferredLocale))
                     .font(.subheadline.weight(note.read ? .regular : .semibold))
                 if let body = note.body, !body.isEmpty {
                     Text(body).font(.caption).foregroundStyle(.secondary).lineLimit(3)
@@ -95,7 +95,7 @@ struct NotificationBellButton: View {
                     }
                 }
         }
-        .accessibilityLabel(appState.unreadCount > 0 ? "Alerts, \(appState.unreadCount) unread" : "Alerts")
+        .accessibilityLabel(appState.unreadCount > 0 ? "\(appState.t("alerts.title")), \(appState.unreadCount)" : appState.t("alerts.title"))
         .sheet(isPresented: $showAlerts) {
             NotificationsView(presentedModally: true)
         }
@@ -114,7 +114,7 @@ struct NotificationDetailView: View {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: note.icon).font(.title3).foregroundStyle(Theme.accent).frame(width: 28)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(note.displayTitle).font(.headline)
+                        Text(note.localizedTitle(locale: appState.preferredLocale)).font(.headline)
                         if let body = note.body, !body.isEmpty { Text(body).font(.subheadline) }
                         Text(relativeDate(note.createdAt)).font(.caption).foregroundStyle(.secondary)
                     }
@@ -127,7 +127,7 @@ struct NotificationDetailView: View {
                     NavigationLink {
                         ReportsView()
                     } label: {
-                        Label("Open safety reports", systemImage: "flag")
+                        Label(appState.t("alerts.openReports"), systemImage: "flag")
                     }
                 }
             } else if note.type == "admin_listing_pending" {
@@ -135,7 +135,7 @@ struct NotificationDetailView: View {
                     NavigationLink {
                         ModerationView()
                     } label: {
-                        Label("Open moderation queue", systemImage: "rectangle.stack.badge.person.crop")
+                        Label(appState.t("alerts.openQueue"), systemImage: "rectangle.stack.badge.person.crop")
                     }
                 }
             } else if note.type == "admin_business_pending" {
@@ -143,7 +143,7 @@ struct NotificationDetailView: View {
                     NavigationLink {
                         SponsorsView()
                     } label: {
-                        Label("Open business approvals", systemImage: "building.2")
+                        Label(appState.t("alerts.openBusiness"), systemImage: "building.2")
                     }
                 }
             } else if note.type == "admin_org_claim_pending" {
@@ -151,7 +151,7 @@ struct NotificationDetailView: View {
                     NavigationLink {
                         ClaimsView()
                     } label: {
-                        Label("Open organization claims", systemImage: "checkmark.seal")
+                        Label(appState.t("alerts.openClaims"), systemImage: "checkmark.seal")
                     }
                 }
             }
@@ -161,7 +161,7 @@ struct NotificationDetailView: View {
                     NavigationLink {
                         ListingLoaderView(listingId: lid)
                     } label: {
-                        Label("View listing", systemImage: "shippingbox")
+                        Label(appState.t("alerts.viewListing"), systemImage: "shippingbox")
                     }
                 }
             } else if let rid = note.targetRequestId {
@@ -169,12 +169,12 @@ struct NotificationDetailView: View {
                     NavigationLink {
                         RequestLoaderView(requestId: rid)
                     } label: {
-                        Label("Open conversation", systemImage: "bubble.left.and.bubble.right")
+                        Label(appState.t("alerts.openConversation"), systemImage: "bubble.left.and.bubble.right")
                     }
                 }
             }
         }
-        .navigationTitle("Alert")
+        .navigationTitle(appState.t("alerts.detailTitle"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             if !note.read { await appState.markNotificationRead(note.id) }
