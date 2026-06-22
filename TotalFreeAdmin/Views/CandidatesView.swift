@@ -5,35 +5,95 @@ import SwiftUI
 struct CandidatesView: View {
     @EnvironmentObject private var appState: AppState
     @State private var candidates: [ScanCandidate] = []
+    @State private var today: ScannerToday?
     @State private var loading = false
 
     var body: some View {
         Group {
-            if loading && candidates.isEmpty {
+            if loading && candidates.isEmpty && today == nil {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if candidates.isEmpty {
-                EmptyState(title: "Nothing to review", message: "The scanners haven't queued any finds for review.", systemImage: "sparkle.magnifyingglass")
             } else {
                 List {
-                    ForEach(candidates) { c in
-                        NavigationLink {
-                            CandidateDetailView(candidate: c) { await reload() }
-                        } label: {
-                            summary(c)
+                    if let t = today {
+                        Section("Today's scanner report") {
+                            todaySummary(t)
                         }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) { Task { await review(c, approve: false) } } label: { Label("Reject", systemImage: "xmark") }
-                            Button { Task { await review(c, approve: true) } } label: { Label("Approve", systemImage: "checkmark") }.tint(.green)
+                    }
+                    Section("Waiting for review (\(candidates.count))") {
+                        if candidates.isEmpty {
+                            Text("Nothing queued for review right now.").font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            ForEach(candidates) { c in
+                                NavigationLink {
+                                    CandidateDetailView(candidate: c) { await reload() }
+                                } label: {
+                                    summary(c)
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) { Task { await review(c, approve: false) } } label: { Label("Reject", systemImage: "xmark") }
+                                    Button { Task { await review(c, approve: true) } } label: { Label("Approve", systemImage: "checkmark") }.tint(.green)
+                                }
+                            }
                         }
                     }
                 }
-                .listStyle(.plain)
             }
         }
         .navigationTitle("Scanner finds")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }
         .task { await reload() }
+    }
+
+    // Current-day report (item 4): compact counts + the day's finds.
+    private func todaySummary(_ t: ScannerToday) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                todayStat("Found", t.found)
+                todayStat("Published", t.published)
+                todayStat("Rejected", t.rejected)
+                todayStat("Waiting", t.pendingNow)
+            }
+            if let items = t.items, !items.isEmpty {
+                ForEach(items.prefix(6)) { it in
+                    HStack(alignment: .top, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(it.title).font(.caption.weight(.semibold)).lineLimit(1)
+                            Text([it.agent?.capitalized, it.city, it.sourceDomain].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        todayStatusTag(it.status)
+                    }
+                }
+            } else {
+                Text("No finds yet today.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func todayStat(_ label: String, _ value: Int?) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value ?? 0)").font(.headline).foregroundStyle(Theme.accent)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func todayStatusTag(_ status: String) -> some View {
+        let info: (String, Color)
+        switch status {
+        case "published": info = ("published", .green)
+        case "needs_review": info = ("waiting", .orange)
+        case "duplicate": info = ("duplicate", .gray)
+        default: info = (status, .red)
+        }
+        return Text(info.0)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(info.1.opacity(0.18), in: Capsule())
+            .foregroundStyle(info.1)
     }
 
     private func summary(_ c: ScanCandidate) -> some View {
@@ -87,6 +147,7 @@ struct CandidatesView: View {
     private func reload() async {
         loading = true
         defer { loading = false }
+        today = await appState.load({ try await $0.fetchScannerToday() })
         if let r = await appState.load({ try await $0.fetchScanCandidates() }) { candidates = r }
     }
 

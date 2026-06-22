@@ -91,14 +91,10 @@ struct StaffHubView: View {
                     }
                 }
 
-                if appState.can(Perm.messageReadAny) || appState.can(Perm.analyticsView) {
-                    Section("Oversight") {
-                        if appState.can(Perm.messageReadAny) {
-                            hubLink("Message oversight", "bubble.left.and.bubble.right", .teal) { ConversationsView() }
-                        }
-                        if appState.can(Perm.analyticsView) {
-                            hubLink("Analytics", "chart.bar", .green) { AnalyticsView() }
-                        }
+                if appState.can(Perm.analyticsView) {
+                    Section("Insights") {
+                        // Message oversight removed — member messaging lives in the Messages tab.
+                        hubLink("Analytics", "chart.bar", .green) { AnalyticsView() }
                     }
                 }
 
@@ -219,187 +215,287 @@ struct NoImageListingsView: View {
     }
 }
 
+/// Weekly rota: pick who covers each weekday (repeats every week). Any single
+/// day in the next two weeks can be overridden. Postgres dow is 0=Sun … 6=Sat;
+/// Swift Calendar weekday is 1=Sun … 7=Sat, so dow = weekday - 1.
 struct ModeratorDutyView: View {
     @EnvironmentObject private var appState: AppState
     @State private var candidates: [ModeratorDutyPerson] = []
-    @State private var duty: [ModeratorDutyShift] = []
-    @State private var selectedIds = Set<String>()
-    @State private var selectedDate = Date()
-    @State private var repeatMode = DutyRepeatMode.dateOnly
-    @State private var weeks = 4
+    @State private var rota: [DutyRotaEntry] = []
+    @State private var overrides: [DutyOverrideRow] = []
     @State private var loading = false
-    @State private var saving = false
+    @State private var savingRota = false
+
+    @State private var selectedDow = Calendar.current.component(.weekday, from: Date()) - 1
+    @State private var rotaSel = Set<String>()
+
+    @State private var editing: DutyEditDate?
+    @State private var overrideSel = Set<String>()
+    @State private var savingOverride = false
+
+    private let weekdays: [(dow: Int, label: String, short: String)] = [
+        (1, "Monday", "Mon"), (2, "Tuesday", "Tue"), (3, "Wednesday", "Wed"),
+        (4, "Thursday", "Thu"), (5, "Friday", "Fri"), (6, "Saturday", "Sat"), (0, "Sunday", "Sun"),
+    ]
 
     var body: some View {
         List {
             Section {
-                DatePicker("Duty date", selection: $selectedDate, displayedComponents: .date)
-                Picker("Apply to", selection: $repeatMode) {
-                    ForEach(DutyRepeatMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
+                Picker("Weekday", selection: $selectedDow) {
+                    ForEach(weekdays, id: \.dow) { wd in Text(wd.short).tag(wd.dow) }
                 }
-                Stepper("For \(weeks) week\(weeks == 1 ? "" : "s")", value: $weeks, in: 1...12)
-                    .disabled(repeatMode == .dateOnly)
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Weekly rota")
             } footer: {
-                Text("Admins always receive moderation alerts. Duty moderators also receive review, report, claim, and business approval alerts for their assigned days.")
+                Text("Set who covers each weekday — it repeats every week. Admins always receive moderation alerts; on-duty moderators also get reports, claims, and post reviews for their day.")
             }
 
-            Section("Moderators") {
+            Section("On duty every \(longLabel(selectedDow))") {
                 if loading && candidates.isEmpty {
                     ProgressView()
                 } else if candidates.isEmpty {
                     Text("No schedulable moderators. Give a user moderation permissions first.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.secondary)
                 } else {
                     ForEach(candidates) { person in
-                        Toggle(isOn: binding(for: person.userId)) {
+                        Toggle(isOn: rotaBinding(for: person.userId)) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(person.name).font(.subheadline.weight(.semibold))
                                 Text([person.email, person.displayRole].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
+                    Button {
+                        Task { await saveRota() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if savingRota { ProgressView() }
+                            else { Label("Save \(longLabel(selectedDow)) rota", systemImage: "checkmark.circle") }
+                            Spacer()
+                        }
+                    }
+                    .disabled(savingRota)
                 }
             }
 
             Section {
-                Button {
-                    Task { await save() }
-                } label: {
-                    HStack {
-                        Spacer()
-                        if saving { ProgressView() }
-                        else { Label("Save duty", systemImage: "checkmark.circle") }
-                        Spacer()
-                    }
-                }
-                .disabled(saving || loading)
-            }
-
-            Section("Upcoming") {
-                if groupedDuty.isEmpty {
-                    Text("No duty shifts scheduled in the next two weeks.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(groupedDuty.keys.sorted(), id: \.self) { day in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(displayDay(day)).font(.subheadline.weight(.semibold))
-                            Text(groupedDuty[day]?.map(\.name).joined(separator: ", ") ?? "No one")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                ForEach(upcomingDays(), id: \.self) { day in
+                    Button {
+                        overrideSel = Set(effectivePeople(day).map(\.0))
+                        editing = DutyEditDate(date: day)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(dayTitle(day)).font(.subheadline.weight(.semibold))
+                                    if isOverridden(day) {
+                                        Text("override").font(.caption2.weight(.semibold))
+                                            .padding(.horizontal, 6).padding(.vertical, 1)
+                                            .background(Color.orange.opacity(0.18), in: Capsule())
+                                            .foregroundStyle(.orange)
+                                    }
+                                }
+                                Text(effectiveNames(day)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                         }
                     }
+                    .buttonStyle(.plain)
                 }
+            } header: {
+                Text("Next 14 days")
+            } footer: {
+                Text("Each day follows the weekly rota unless you override it.")
             }
         }
         .navigationTitle("Duty")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }
         .task { await reload() }
-        .onChange(of: selectedDate) { _, _ in syncSelectionForSelectedDate() }
+        .onChange(of: selectedDow) { _, _ in syncRotaSelection() }
+        .sheet(item: $editing) { ctx in overrideSheet(ctx.date) }
     }
 
-    private var groupedDuty: [String: [ModeratorDutyShift]] {
-        Dictionary(grouping: duty, by: \.dutyDate)
-    }
-
-    private func binding(for id: String) -> Binding<Bool> {
-        Binding {
-            selectedIds.contains(id)
-        } set: { isOn in
-            if isOn { selectedIds.insert(id) }
-            else { selectedIds.remove(id) }
+    // The per-date override editor (sheet). All logic stays in the parent so a
+    // save can refresh the list immediately.
+    private func overrideSheet(_ day: Date) -> some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(candidates) { person in
+                        Toggle(isOn: overrideBinding(for: person.userId)) {
+                            Text(person.name).font(.subheadline)
+                        }
+                    }
+                } footer: {
+                    Text("Choose who's on duty just for \(dayTitle(day)). Leave everyone off for nobody.")
+                }
+                Section {
+                    Button {
+                        Task { await saveOverride(day) }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if savingOverride { ProgressView() }
+                            else { Label("Save this day", systemImage: "checkmark.circle") }
+                            Spacer()
+                        }
+                    }
+                    .disabled(savingOverride)
+                    if isOverridden(day) {
+                        Button(role: .destructive) {
+                            Task { await resetOverride(day) }
+                        } label: {
+                            Label("Reset to weekly rota", systemImage: "arrow.uturn.backward")
+                        }
+                    }
+                }
+            }
+            .navigationTitle(dayTitle(day))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { editing = nil }
+                }
+            }
         }
+        .presentationDetents([.medium, .large])
+    }
+
+    // MARK: helpers
+
+    private func longLabel(_ dow: Int) -> String { weekdays.first { $0.dow == dow }?.label ?? "" }
+
+    private func rotaBinding(for id: String) -> Binding<Bool> {
+        Binding { rotaSel.contains(id) } set: { if $0 { rotaSel.insert(id) } else { rotaSel.remove(id) } }
+    }
+    private func overrideBinding(for id: String) -> Binding<Bool> {
+        Binding { overrideSel.contains(id) } set: { if $0 { overrideSel.insert(id) } else { overrideSel.remove(id) } }
+    }
+
+    private func dowOf(_ date: Date) -> Int { Calendar.current.component(.weekday, from: date) - 1 }
+
+    private func upcomingDays() -> [Date] {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: Date())
+        return (0..<14).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    private func isOverridden(_ date: Date) -> Bool {
+        let key = dateKey(date)
+        return overrides.contains { $0.dutyDate == key }
+    }
+
+    /// (userId, name) effective on a date: the override if the day is overridden, else the weekly rota.
+    private func effectivePeople(_ date: Date) -> [(String, String)] {
+        if isOverridden(date) {
+            let key = dateKey(date)
+            return overrides.filter { $0.dutyDate == key && $0.userId != nil }
+                .map { ($0.userId ?? "", $0.name ?? "Moderator") }
+        }
+        let dow = dowOf(date)
+        return rota.filter { $0.weekday == dow }.map { ($0.userId, $0.name) }
+    }
+
+    private func effectiveNames(_ date: Date) -> String {
+        let people = effectivePeople(date)
+        return people.isEmpty ? "No one on duty" : people.map(\.1).joined(separator: ", ")
+    }
+
+    private func dayTitle(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date) ? "Today" : displayDay(dateKey(date))
     }
 
     private func reload() async {
         loading = true
         defer { loading = false }
         candidates = await appState.load({ try await $0.adminListModeratorDutyCandidates() }) ?? []
-        duty = await appState.load({ try await $0.adminListModeratorDuty(days: 21) }) ?? []
-        syncSelectionForSelectedDate()
+        rota = await appState.load({ try await $0.adminListDutyRota() }) ?? []
+        overrides = await appState.load({ try await $0.adminListDutyOverrides(days: 21) }) ?? []
+        syncRotaSelection()
     }
 
-    private func save() async {
-        let dates = selectedDates()
-        guard !dates.isEmpty else { return }
-        saving = true
-        let ids = Array(selectedIds)
+    private func syncRotaSelection() {
+        rotaSel = Set(rota.filter { $0.weekday == selectedDow }.map(\.userId))
+    }
+
+    private func saveRota() async {
+        savingRota = true
+        let dow = selectedDow
+        let ids = Array(rotaSel)
         let ok = await appState.perform { client in
-            _ = try await client.adminSetModeratorDutyBulk(dates: dates, userIds: ids)
+            _ = try await client.adminSetDutyRota(weekday: dow, userIds: ids)
         }
-        saving = false
+        savingRota = false
         if ok {
-            appState.infoMessage = ids.isEmpty ? "Duty cleared." : "Duty saved."
+            appState.infoMessage = "\(longLabel(dow)) rota saved."
             await reload()
         }
     }
 
-    private func syncSelectionForSelectedDate() {
-        selectedIds = Set(groupedDuty[dateKey(selectedDate)]?.map(\.userId) ?? [])
+    private func saveOverride(_ day: Date) async {
+        savingOverride = true
+        let key = dateKey(day)
+        let ids = Array(overrideSel)
+        let ok = await appState.perform { try await $0.adminSetDutyOverride(date: key, userIds: ids) }
+        savingOverride = false
+        if ok {
+            appState.infoMessage = "Override saved."
+            editing = nil
+            await reload()
+        }
     }
 
-    private func selectedDates() -> [String] {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: selectedDate)
-        if repeatMode == .dateOnly { return [dateKey(start)] }
-        let totalDays = max(1, weeks) * 7
-        return (0..<totalDays).compactMap { offset in
-            guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
-            return repeatMode.includes(date, calendar: calendar, anchor: start) ? dateKey(date) : nil
+    private func resetOverride(_ day: Date) async {
+        let key = dateKey(day)
+        let ok = await appState.perform { try await $0.adminClearDutyOverride(date: key) }
+        if ok {
+            appState.infoMessage = "Reverted to the weekly rota."
+            editing = nil
+            await reload()
         }
     }
 }
 
-private enum DutyRepeatMode: String, CaseIterable, Identifiable {
-    case dateOnly, thisWeekday, everyDay, weekdays, weekends
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .dateOnly: "Just this date"
-        case .thisWeekday: "This weekday"
-        case .everyDay: "Every day"
-        case .weekdays: "Weekdays"
-        case .weekends: "Weekends"
-        }
-    }
-
-    func includes(_ date: Date, calendar: Calendar, anchor: Date) -> Bool {
-        let weekday = calendar.component(.weekday, from: date)
-        switch self {
-        case .dateOnly:
-            return calendar.isDate(date, inSameDayAs: anchor)
-        case .thisWeekday:
-            return weekday == calendar.component(.weekday, from: anchor)
-        case .everyDay:
-            return true
-        case .weekdays:
-            return (2...6).contains(weekday)
-        case .weekends:
-            return weekday == 1 || weekday == 7
-        }
-    }
+private struct DutyEditDate: Identifiable {
+    let date: Date
+    var id: String { dateKey(date) }
 }
 
 struct TeamsView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var users: [AdminUserRow] = []
+    @State private var teams: [TeamRow] = []
+    @State private var teamRoles: [TeamRoleLink] = []
+    @State private var teamMembers: [TeamMemberLink] = []
     @State private var loading = false
 
     var body: some View {
         Group {
-            if loading && users.isEmpty {
+            if loading && teams.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if teams.isEmpty {
+                EmptyState(title: "No teams", message: "Teams group people so they inherit roles together.", systemImage: "person.3")
             } else {
                 List {
-                    teamSection("Moderation team", users.filter { $0.userRole.isStaff })
-                    teamSection("Organizations", users.filter { $0.userRole == .partner })
-                    teamSection("Businesses", users.filter { $0.userRole == .sponsor })
+                    Section {
+                        ForEach(teams) { team in
+                            NavigationLink {
+                                TeamDetailView(teamId: team.id, teamName: team.name)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(team.name).font(.subheadline.weight(.semibold))
+                                    Text(teamSubtitle(team))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    } footer: {
+                        Text("Tap a team to manage its roles and members. Members inherit the team's roles when inheritance is on.")
+                    }
                 }
             }
         }
@@ -409,66 +505,259 @@ struct TeamsView: View {
         .task { await reload() }
     }
 
-    private func teamSection(_ title: String, _ rows: [AdminUserRow]) -> some View {
-        Section(title) {
-            if rows.isEmpty {
-                Text("No members yet.").font(.caption).foregroundStyle(.secondary)
-            } else {
-                ForEach(rows) { user in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(user.displayName).font(.subheadline.weight(.semibold))
-                            if let email = user.email { Text(email).font(.caption).foregroundStyle(.secondary) }
-                        }
-                        Spacer()
-                        RoleBadge(role: user.userRole)
-                    }
-                }
-            }
-        }
+    private func teamSubtitle(_ team: TeamRow) -> String {
+        let m = teamMembers.filter { $0.teamId == team.id }.count
+        let r = teamRoles.filter { $0.teamId == team.id }.count
+        var s = "\(m) member\(m == 1 ? "" : "s") · \(r) role\(r == 1 ? "" : "s")"
+        if team.inheritRoles == false { s += " · inheritance off" }
+        return s
     }
 
     private func reload() async {
         loading = true
         defer { loading = false }
-        if let rows = await appState.load({ try await $0.adminListUsers() }) { users = rows }
+        teams = await appState.load({ try await $0.fetchTeams() }) ?? []
+        teamRoles = await appState.load({ try await $0.fetchTeamRoleLinks() }) ?? []
+        teamMembers = await appState.load({ try await $0.fetchTeamMemberLinks() }) ?? []
+    }
+}
+
+/// One team: its security roles (→ role detail) and members (→ user detail),
+/// with swipe-to-remove and add-member when the viewer can manage teams.
+struct TeamDetailView: View {
+    @EnvironmentObject private var appState: AppState
+    let teamId: String
+    let teamName: String
+    @State private var roles: [SecurityRole] = []
+    @State private var teamRoles: [TeamRoleLink] = []
+    @State private var teamMembers: [TeamMemberLink] = []
+    @State private var users: [AdminUserRow] = []
+    @State private var loading = false
+
+    private var roleItems: [SecurityRole] {
+        let ids = Set(teamRoles.filter { $0.teamId == teamId }.map(\.roleId))
+        return roles.filter { ids.contains($0.id) }
+    }
+    private var memberItems: [AdminUserRow] {
+        let ids = Set(teamMembers.filter { $0.teamId == teamId }.map(\.userId))
+        return users.filter { ids.contains($0.id) }
+    }
+    private var nonMembers: [AdminUserRow] {
+        let ids = Set(teamMembers.filter { $0.teamId == teamId }.map(\.userId))
+        return users.filter { !ids.contains($0.id) }
+    }
+
+    var body: some View {
+        List {
+            Section("Security roles") {
+                if roleItems.isEmpty {
+                    Text("No roles assigned to this team.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(roleItems) { role in
+                        NavigationLink { RoleDetailView(roleId: role.id, roleName: role.name) } label: {
+                            Text(role.name).font(.subheadline)
+                        }
+                    }
+                }
+            }
+            Section {
+                if memberItems.isEmpty {
+                    Text("No members yet.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(memberItems) { u in
+                        NavigationLink { UserDetailView(user: u, canManage: appState.can(Perm.roleManage)) } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(u.displayName).font(.subheadline.weight(.semibold))
+                                if let e = u.email { Text(e).font(.caption).foregroundStyle(.secondary) }
+                            }
+                        }
+                        .swipeActions {
+                            if appState.can(Perm.teamManage) {
+                                Button(role: .destructive) { Task { await setMember(u.id, on: false) } } label: {
+                                    Label("Remove", systemImage: "person.badge.minus")
+                                }
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("Members")
+            } footer: {
+                if appState.can(Perm.teamManage) { Text("Swipe a member to remove them from this team.") }
+            }
+            if appState.can(Perm.teamManage), !nonMembers.isEmpty {
+                Section {
+                    Menu {
+                        ForEach(nonMembers) { u in
+                            Button(u.displayName) { Task { await setMember(u.id, on: true) } }
+                        }
+                    } label: {
+                        Label("Add member", systemImage: "person.badge.plus")
+                    }
+                }
+            }
+        }
+        .navigationTitle(teamName)
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await reload() }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        loading = true
+        defer { loading = false }
+        roles = await appState.load({ try await $0.fetchSecurityRoles() }) ?? []
+        teamRoles = await appState.load({ try await $0.fetchTeamRoleLinks() }) ?? []
+        teamMembers = await appState.load({ try await $0.fetchTeamMemberLinks() }) ?? []
+        users = await appState.load({ try await $0.adminListUsers() }) ?? []
+    }
+
+    private func setMember(_ uid: String, on: Bool) async {
+        let ok = await appState.perform { try await $0.setTeamMemberLink(teamId: teamId, userId: uid, on: on) }
+        if ok { appState.infoMessage = on ? "Member added." : "Member removed."; await reload() }
     }
 }
 
 struct RolesView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var roles: [SecurityRole] = []
+    @State private var rolePerms: [RolePermissionLink] = []
+    @State private var userRoles: [UserRoleLink] = []
+    @State private var loading = false
 
     var body: some View {
-        List {
-            Section("Role guide") {
-                roleGuide(.user, "Can browse, request, post, message, and manage their own posts.")
-                roleGuide(.partner, "Organization account for public programs and community resources.")
-                roleGuide(.sponsor, "Business account for free local offers and approvals.")
-                roleGuide(.moderator, "Can review posts, reports, claims, and scanner finds when permitted.")
-                roleGuide(.owner, "Can manage moderation operations, duty, users, and roles.")
-                roleGuide(.admin, "Full operational access.")
-            }
-
-            if appState.can(Perm.roleManage) {
-                Section {
-                    NavigationLink {
-                        UsersView(canManageRoles: true)
-                    } label: {
-                        Label("Manage user roles", systemImage: "person.crop.circle.badge.checkmark")
+        Group {
+            if loading && roles.isEmpty {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if roles.isEmpty {
+                EmptyState(title: "No roles", message: "Security roles grant permissions to people and teams.", systemImage: "shield.lefthalf.filled")
+            } else {
+                List {
+                    Section {
+                        ForEach(roles) { role in
+                            NavigationLink { RoleDetailView(roleId: role.id, roleName: role.name) } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(role.name).font(.subheadline.weight(.semibold))
+                                        if role.locked == true { Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.secondary) }
+                                    }
+                                    Text(subtitle(role)).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    } footer: {
+                        Text("Tap a role to see what it grants and who has it. A person's access is the union of every role assigned to them and their teams.")
                     }
                 }
             }
         }
         .navigationTitle("Roles")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await reload() }
+        .task { await reload() }
     }
 
-    private func roleGuide(_ role: UserRole, _ description: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            RoleBadge(role: role)
-            Text(description).font(.caption).foregroundStyle(.secondary)
+    private func subtitle(_ role: SecurityRole) -> String {
+        let members = userRoles.filter { $0.roleId == role.id }.count
+        let permText: String
+        if role.locked == true {
+            permText = "every permission"
+        } else {
+            let n = rolePerms.filter { $0.roleId == role.id }.count
+            permText = "\(n) permission\(n == 1 ? "" : "s")"
         }
-        .padding(.vertical, 4)
+        return "\(permText) · \(members) direct member\(members == 1 ? "" : "s")"
+    }
+
+    private func reload() async {
+        loading = true
+        defer { loading = false }
+        roles = await appState.load({ try await $0.fetchSecurityRoles() }) ?? []
+        rolePerms = await appState.load({ try await $0.fetchRolePermissionLinks() }) ?? []
+        userRoles = await appState.load({ try await $0.fetchUserRoleLinks() }) ?? []
+    }
+}
+
+/// One role: the permissions it grants, its direct members (→ user detail), and
+/// the teams that confer it (→ team detail).
+struct RoleDetailView: View {
+    @EnvironmentObject private var appState: AppState
+    let roleId: String
+    let roleName: String
+    @State private var perms: [Permission] = []
+    @State private var rolePerms: [RolePermissionLink] = []
+    @State private var userRoles: [UserRoleLink] = []
+    @State private var users: [AdminUserRow] = []
+    @State private var teams: [TeamRow] = []
+    @State private var teamRoles: [TeamRoleLink] = []
+    @State private var loading = false
+
+    private var grantedPerms: [Permission] {
+        let keys = Set(rolePerms.filter { $0.roleId == roleId }.map(\.permissionKey))
+        return perms.filter { keys.contains($0.key) }
+    }
+    private var directMembers: [AdminUserRow] {
+        let ids = Set(userRoles.filter { $0.roleId == roleId }.map(\.userId))
+        return users.filter { ids.contains($0.id) }
+    }
+    private var grantingTeams: [TeamRow] {
+        let ids = Set(teamRoles.filter { $0.roleId == roleId }.map(\.teamId))
+        return teams.filter { ids.contains($0.id) }
+    }
+
+    var body: some View {
+        List {
+            Section("Permissions granted") {
+                if grantedPerms.isEmpty {
+                    Text("No permissions assigned to this role.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(grantedPerms) { p in Text(p.label ?? p.key).font(.subheadline) }
+                }
+            }
+            Section("Members") {
+                if directMembers.isEmpty {
+                    Text("No one has this role directly.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(directMembers) { u in
+                        NavigationLink { UserDetailView(user: u, canManage: appState.can(Perm.roleManage)) } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(u.displayName).font(.subheadline.weight(.semibold))
+                                if let e = u.email { Text(e).font(.caption).foregroundStyle(.secondary) }
+                            }
+                        }
+                    }
+                }
+            }
+            if !grantingTeams.isEmpty {
+                Section("Teams with this role") {
+                    ForEach(grantingTeams) { t in
+                        NavigationLink { TeamDetailView(teamId: t.id, teamName: t.name) } label: {
+                            HStack {
+                                Text(t.name).font(.subheadline)
+                                if t.inheritRoles == false {
+                                    Spacer(); Text("inheritance off").font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(roleName)
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await reload() }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        loading = true
+        defer { loading = false }
+        perms = await appState.load({ try await $0.fetchPermissions() }) ?? []
+        rolePerms = await appState.load({ try await $0.fetchRolePermissionLinks() }) ?? []
+        userRoles = await appState.load({ try await $0.fetchUserRoleLinks() }) ?? []
+        users = await appState.load({ try await $0.adminListUsers() }) ?? []
+        teams = await appState.load({ try await $0.fetchTeams() }) ?? []
+        teamRoles = await appState.load({ try await $0.fetchTeamRoleLinks() }) ?? []
     }
 }
 

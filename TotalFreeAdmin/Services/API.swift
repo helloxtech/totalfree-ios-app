@@ -530,6 +530,81 @@ extension SupabaseClient {
     func countMyGifts(ownerId: String) async throws -> Int {
         try await count("/rest/v1/requests?status=eq.completed&owner_id=eq.\(ownerId)")
     }
+
+    // MARK: Weekly moderator-duty rota (owner/admin)
+
+    func adminListDutyRota() async throws -> [DutyRotaEntry] {
+        try await rpcDecoded("admin_list_duty_rota", params: EmptyParams(), as: [DutyRotaEntry].self)
+    }
+    func adminListDutyOverrides(startDate: String? = nil, days: Int = 21) async throws -> [DutyOverrideRow] {
+        try await rpcDecoded("admin_list_duty_overrides", params: DutyOverrideListParams(p_start: startDate, p_days: days), as: [DutyOverrideRow].self)
+    }
+    @discardableResult
+    func adminSetDutyRota(weekday: Int, userIds: [String]) async throws -> [DutyRotaEntry] {
+        try await rpcDecoded("admin_set_duty_rota", params: DutyRotaSetParams(p_weekday: weekday, p_user_ids: userIds), as: [DutyRotaEntry].self)
+    }
+    func adminSetDutyOverride(date: String, userIds: [String]) async throws {
+        try await rpc("admin_set_duty_override", params: DutyOverrideSetParams(p_date: date, p_user_ids: userIds))
+    }
+    func adminClearDutyOverride(date: String) async throws {
+        try await rpc("admin_clear_duty_override", params: DutyDateParams(p_date: date))
+    }
+
+    // MARK: Current-day scanner report (listing.review)
+
+    func fetchScannerToday(day: String? = nil) async throws -> ScannerToday {
+        try await rpcDecoded("admin_scanner_today", params: DayParams(p_day: day), as: ScannerToday.self)
+    }
+
+    // MARK: Analytics — daily impact report (analytics.view / owner)
+
+    func fetchImpactReport(day: String? = nil) async throws -> ImpactReport {
+        try await rpcDecoded("admin_daily_impact_report", params: DayParams(p_day: day), as: ImpactReport.self)
+    }
+
+    // MARK: Security roles / teams / permissions (RLS-gated tables; role.manage)
+
+    func fetchPermissions() async throws -> [Permission] {
+        try await restGet("/rest/v1/permissions?select=*&order=sort", as: [Permission].self)
+    }
+    func fetchSecurityRoles() async throws -> [SecurityRole] {
+        try await restGet("/rest/v1/security_roles?select=*&order=name", as: [SecurityRole].self)
+    }
+    func fetchRolePermissionLinks() async throws -> [RolePermissionLink] {
+        try await restGet("/rest/v1/role_permissions?select=role_id,permission_key", as: [RolePermissionLink].self)
+    }
+    func fetchUserRoleLinks() async throws -> [UserRoleLink] {
+        try await restGet("/rest/v1/user_roles?select=user_id,role_id", as: [UserRoleLink].self)
+    }
+    func setUserRoleLink(userId: String, roleId: String, on: Bool) async throws {
+        if on {
+            try await restInsertNoReturn(
+                "user_roles", body: UserRoleLinkInsert(user_id: userId, role_id: roleId),
+                prefer: "resolution=ignore-duplicates,return=minimal", onConflict: "user_id,role_id"
+            )
+        } else {
+            try await restDeleteNoReturn("/rest/v1/user_roles?user_id=eq.\(userId)&role_id=eq.\(roleId)")
+        }
+    }
+    func fetchTeams() async throws -> [TeamRow] {
+        try await restGet("/rest/v1/teams?select=*&order=name", as: [TeamRow].self)
+    }
+    func fetchTeamRoleLinks() async throws -> [TeamRoleLink] {
+        try await restGet("/rest/v1/team_roles?select=team_id,role_id", as: [TeamRoleLink].self)
+    }
+    func fetchTeamMemberLinks() async throws -> [TeamMemberLink] {
+        try await restGet("/rest/v1/team_members?select=team_id,user_id", as: [TeamMemberLink].self)
+    }
+    func setTeamMemberLink(teamId: String, userId: String, on: Bool) async throws {
+        if on {
+            try await restInsertNoReturn(
+                "team_members", body: TeamMemberLinkInsert(team_id: teamId, user_id: userId),
+                prefer: "resolution=ignore-duplicates,return=minimal", onConflict: "team_id,user_id"
+            )
+        } else {
+            try await restDeleteNoReturn("/rest/v1/team_members?team_id=eq.\(teamId)&user_id=eq.\(userId)")
+        }
+    }
 }
 
 private struct ListingTitleRow: Decodable { let id: String; let title: String }

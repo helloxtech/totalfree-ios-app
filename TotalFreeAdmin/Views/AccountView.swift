@@ -120,7 +120,9 @@ struct AccountView: View {
                 NavigationLink {
                     SavedAlertsView()
                 } label: {
-                    Label("Saved alerts", systemImage: "bell.badge")
+                    // Saved searches that notify on a match — a bookmark, not a bell,
+                    // so it doesn't read as "unread alerts" or duplicate Notifications.
+                    Label("Saved alerts", systemImage: "bookmark")
                 }
                 NavigationLink {
                     NotificationSettingsView()

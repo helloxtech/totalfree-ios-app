@@ -83,6 +83,7 @@ struct NotificationBellButton: View {
     var body: some View {
         Button { showAlerts = true } label: {
             Image(systemName: "bell")
+                .font(.title3)   // slightly larger tap target on the Browse header (item 3)
                 .overlay(alignment: .topTrailing) {
                     if appState.unreadCount > 0 {
                         Text(appState.unreadCount > 9 ? "9+" : "\(appState.unreadCount)")

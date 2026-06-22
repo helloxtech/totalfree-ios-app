@@ -772,3 +772,150 @@ enum JSONValue: Codable {
         }
     }
 }
+
+// MARK: - Weekly moderator-duty rota (item 1)
+
+/// One person assigned to a recurring weekday (0=Sun … 6=Sat).
+struct DutyRotaEntry: Codable, Identifiable, Equatable {
+    let weekday: Int
+    let userId: String
+    let name: String
+    let email: String?
+    let role: String?
+    var id: String { "\(weekday)-\(userId)" }
+}
+
+/// One row of a per-date override. `userId` is nil for an "empty" override
+/// (the day is explicitly nobody, distinct from "use the rota").
+struct DutyOverrideRow: Codable, Identifiable, Equatable {
+    let dutyDate: String
+    let userId: String?
+    let name: String?
+    let email: String?
+    let role: String?
+    var id: String { "\(dutyDate)-\(userId ?? "none")" }
+}
+
+struct DutyRotaSetParams: Encodable { let p_weekday: Int; let p_user_ids: [String] }
+struct DutyOverrideListParams: Encodable { let p_start: String?; let p_days: Int }
+struct DutyOverrideSetParams: Encodable { let p_date: String; let p_user_ids: [String] }
+struct DutyDateParams: Encodable { let p_date: String }
+
+// MARK: - Current-day scanner report (item 4)
+
+struct ScannerTodayItem: Codable, Identifiable, Equatable {
+    let id: String
+    let agent: String?
+    let title: String
+    let category: String?
+    let city: String?
+    let status: String
+    let confidence: Double?
+    let sourceDomain: String?
+    let externalUrl: String?
+    let publishedListing: String?
+    let createdAt: String?
+    var confidencePct: String? { confidence.map { "\(Int(($0 * 100).rounded()))%" } }
+}
+
+struct ScannerToday: Codable, Equatable {
+    let date: String?
+    let found: Int?
+    let published: Int?
+    let rejected: Int?
+    let pendingNow: Int?
+    let items: [ScannerTodayItem]?
+}
+
+struct DayParams: Encodable { let p_day: String? }
+
+// MARK: - Analytics / daily impact report (item 7)
+
+struct ImpactSummary: Codable, Equatable {
+    let activeUsers: Int?
+    let pageViews: Int?
+    let newUsers: Int?
+    let postsSubmitted: Int?
+    let requestsCreated: Int?
+    let messagesSent: Int?
+    let savedAlerts: Int?
+    let listingViews: Int?
+}
+
+struct ImpactDay: Codable, Equatable, Identifiable {
+    let date: String
+    let pageViews: Int?
+    let activeUsers: Int?
+    let newUsers: Int?
+    let posts: Int?
+    let requests: Int?
+    let moderationActions: Int?
+    var id: String { date }
+}
+
+struct CategoryCount: Codable, Equatable, Identifiable {
+    let category: String
+    let count: Int
+    var id: String { category }
+}
+
+struct EventCount: Codable, Equatable, Identifiable {
+    let event: String
+    let count: Int
+    var id: String { event }
+}
+
+struct ImpactReport: Codable, Equatable {
+    let date: String?
+    let summary: ImpactSummary?
+    let series: [ImpactDay]?
+    let categoryMix: [CategoryCount]?
+    let trafficEvents: [EventCount]?
+}
+
+// MARK: - Security roles / teams / permissions (items 8/9/10; RLS-gated tables)
+
+struct Permission: Codable, Identifiable, Equatable {
+    let key: String
+    let label: String?
+    let category: String?
+    let sort: Int?
+    var id: String { key }
+}
+
+struct SecurityRole: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let description: String?
+    let isSystem: Bool?
+    let locked: Bool?
+}
+
+struct RolePermissionLink: Codable, Equatable {
+    let roleId: String
+    let permissionKey: String
+}
+
+struct UserRoleLink: Codable, Equatable {
+    let userId: String
+    let roleId: String
+}
+
+struct TeamRow: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let inheritRoles: Bool?
+}
+
+struct TeamRoleLink: Codable, Equatable {
+    let teamId: String
+    let roleId: String
+}
+
+struct TeamMemberLink: Codable, Equatable {
+    let teamId: String
+    let userId: String
+}
+
+struct UserRoleLinkInsert: Encodable { let user_id: String; let role_id: String }
+struct TeamMemberLinkInsert: Encodable { let team_id: String; let user_id: String }

@@ -76,7 +76,9 @@ struct RoleBadge: View {
     }
 }
 
-/// User detail with optional role management.
+/// User detail: the person's account type, the security roles and teams assigned
+/// to them (each clickable + editable), plus their posts. Mirrors the web model —
+/// account type is just the entity kind; staff access comes from roles + teams.
 struct UserDetailView: View {
     @EnvironmentObject private var appState: AppState
     let user: AdminUserRow
@@ -84,14 +86,37 @@ struct UserDetailView: View {
     var onChanged: () -> Void
 
     @State private var currentRole: UserRole
-    @State private var working = false
+    @State private var roles: [SecurityRole] = []
+    @State private var userRoles: [UserRoleLink] = []
+    @State private var teams: [TeamRow] = []
+    @State private var teamMembers: [TeamMemberLink] = []
+    @State private var teamRoles: [TeamRoleLink] = []
     @State private var posts: [Listing] = []
+    @State private var working = false
 
-    init(user: AdminUserRow, canManage: Bool, onChanged: @escaping () -> Void) {
+    init(user: AdminUserRow, canManage: Bool, onChanged: @escaping () -> Void = {}) {
         self.user = user
         self.canManage = canManage
         self.onChanged = onChanged
         _currentRole = State(initialValue: user.userRole)
+    }
+
+    private let entityKinds: [(value: String, label: String)] = [
+        ("user", "Neighbour"), ("partner", "Organization"), ("sponsor", "Business"),
+    ]
+
+    private var assignedRoleIds: Set<String> { Set(userRoles.filter { $0.userId == user.id }.map(\.roleId)) }
+    private var assignedRoles: [SecurityRole] { roles.filter { assignedRoleIds.contains($0.id) } }
+    private var unassignedRoles: [SecurityRole] { roles.filter { !assignedRoleIds.contains($0.id) } }
+    private var memberTeamIds: Set<String> { Set(teamMembers.filter { $0.userId == user.id }.map(\.teamId)) }
+    private var memberTeams: [TeamRow] { teams.filter { memberTeamIds.contains($0.id) } }
+    private var nonMemberTeams: [TeamRow] { teams.filter { !memberTeamIds.contains($0.id) } }
+    private var effectiveRoleNames: [String] {
+        var ids = assignedRoleIds
+        for t in memberTeams where t.inheritRoles != false {
+            for tr in teamRoles where tr.teamId == t.id { ids.insert(tr.roleId) }
+        }
+        return roles.filter { ids.contains($0.id) }.map(\.name).sorted()
     }
 
     var body: some View {
@@ -110,26 +135,80 @@ struct UserDetailView: View {
                     Spacer()
                 }
                 .padding(.vertical, 4)
-                if let created = user.createdAt {
-                    LabeledContent("Joined", value: relativeDate(created))
-                }
+                if let created = user.createdAt { LabeledContent("Joined", value: relativeDate(created)) }
+                LabeledContent("Effective roles", value: effectiveRoleNames.isEmpty ? "Member" : effectiveRoleNames.joined(separator: ", "))
             }
 
             if canManage {
-                Section("Change role") {
-                    ForEach(UserRole.assignable) { role in
-                        Button {
-                            guard role != currentRole, !working else { return }
-                            Task { await changeRole(role) }
-                        } label: {
-                            HStack {
-                                Text(role.label).foregroundStyle(.primary)
-                                Spacer()
-                                if role == currentRole { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+                Section {
+                    Picker("Account type", selection: accountTypeBinding) {
+                        ForEach(entityKinds, id: \.value) { kind in Text(kind.label).tag(kind.value) }
+                    }
+                } header: {
+                    Text("Account type")
+                } footer: {
+                    Text("Sets the kind of account and its starting team. It does not grant staff access on its own — that comes from the security roles and teams below.")
+                }
+            }
+
+            Section {
+                if assignedRoles.isEmpty {
+                    Text("No security roles assigned.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(assignedRoles) { role in
+                        NavigationLink { RoleDetailView(roleId: role.id, roleName: role.name) } label: {
+                            Text(role.name).font(.subheadline)
+                        }
+                        .swipeActions {
+                            if canManage {
+                                Button(role: .destructive) { Task { await toggleRole(role.id, on: false) } } label: {
+                                    Label("Remove", systemImage: "minus.circle")
+                                }
                             }
                         }
                     }
                 }
+                if canManage, !unassignedRoles.isEmpty {
+                    Menu {
+                        ForEach(unassignedRoles) { role in Button(role.name) { Task { await toggleRole(role.id, on: true) } } }
+                    } label: {
+                        Label("Add role", systemImage: "plus.circle")
+                    }
+                }
+            } header: {
+                Text("Security roles")
+            } footer: {
+                Text("Roles assigned to this person directly. Tap a role for details; swipe to remove.")
+            }
+
+            Section {
+                if memberTeams.isEmpty {
+                    Text("Not a member of any team.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(memberTeams) { team in
+                        NavigationLink { TeamDetailView(teamId: team.id, teamName: team.name) } label: {
+                            Text(team.name).font(.subheadline)
+                        }
+                        .swipeActions {
+                            if canManage {
+                                Button(role: .destructive) { Task { await toggleTeam(team.id, on: false) } } label: {
+                                    Label("Remove", systemImage: "minus.circle")
+                                }
+                            }
+                        }
+                    }
+                }
+                if canManage, !nonMemberTeams.isEmpty {
+                    Menu {
+                        ForEach(nonMemberTeams) { team in Button(team.name) { Task { await toggleTeam(team.id, on: true) } } }
+                    } label: {
+                        Label("Add to team", systemImage: "plus.circle")
+                    }
+                }
+            } header: {
+                Text("Teams")
+            } footer: {
+                Text("Teams grant their roles to members when inheritance is on.")
             }
 
             Section("Posts (\(posts.count))") {
@@ -144,18 +223,44 @@ struct UserDetailView: View {
         }
         .navigationTitle(user.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if let p = await appState.load({ try await $0.fetchMyListings(ownerId: user.id) }) { posts = p }
+        .refreshable { await reload() }
+        .task { await reload() }
+    }
+
+    private var accountTypeBinding: Binding<String> {
+        Binding {
+            entityKinds.contains { $0.value == currentRole.rawValue } ? currentRole.rawValue : "user"
+        } set: { newValue in
+            Task { await changeAccountType(newValue) }
         }
     }
 
-    private func changeRole(_ role: UserRole) async {
+    private func reload() async {
+        roles = await appState.load({ try await $0.fetchSecurityRoles() }) ?? []
+        userRoles = await appState.load({ try await $0.fetchUserRoleLinks() }) ?? []
+        teams = await appState.load({ try await $0.fetchTeams() }) ?? []
+        teamMembers = await appState.load({ try await $0.fetchTeamMemberLinks() }) ?? []
+        teamRoles = await appState.load({ try await $0.fetchTeamRoleLinks() }) ?? []
+        posts = await appState.load({ try await $0.fetchMyListings(ownerId: user.id) }) ?? []
+    }
+
+    private func toggleRole(_ roleId: String, on: Bool) async {
+        let ok = await appState.perform { try await $0.setUserRoleLink(userId: user.id, roleId: roleId, on: on) }
+        if ok { appState.infoMessage = on ? "Role added." : "Role removed."; await reload(); onChanged() }
+    }
+    private func toggleTeam(_ teamId: String, on: Bool) async {
+        let ok = await appState.perform { try await $0.setTeamMemberLink(teamId: teamId, userId: user.id, on: on) }
+        if ok { appState.infoMessage = on ? "Added to team." : "Removed from team."; await reload(); onChanged() }
+    }
+    private func changeAccountType(_ value: String) async {
+        guard value != currentRole.rawValue, !working else { return }
         working = true
-        let ok = await appState.perform { try await $0.setUserRole(target: user.id, role: role.rawValue) }
+        let ok = await appState.perform { try await $0.setUserRole(target: user.id, role: value) }
         working = false
         if ok {
-            currentRole = role
-            appState.infoMessage = "Role updated to \(role.label)."
+            currentRole = UserRole(rawValue: value) ?? .user
+            appState.infoMessage = "Account type updated."
+            await reload()
             onChanged()
         }
     }
