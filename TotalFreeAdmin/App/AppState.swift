@@ -23,6 +23,7 @@ final class AppState: ObservableObject {
     @Published private(set) var reportsCount = 0
     @Published private(set) var claimsCount = 0
     @Published private(set) var businessApprovalsCount = 0
+    @Published private(set) var missingImagesCount = 0
     @Published private(set) var myPostsActionableCount = 0
     @Published private(set) var giftsGiven = 0
     @Published private(set) var entityKind = "Member"   // Member / Business / Organization
@@ -152,6 +153,7 @@ final class AppState: ObservableObject {
         reportsCount = 0
         claimsCount = 0
         businessApprovalsCount = 0
+        missingImagesCount = 0
         myPostsActionableCount = 0
         giftsGiven = 0
         entityKind = "Member"
@@ -202,7 +204,7 @@ final class AppState: ObservableObject {
     }
 
     /// Total count shown on the staff tab badge.
-    var staffBadgeCount: Int { moderationCount + reportsCount + claimsCount + businessApprovalsCount }
+    var staffBadgeCount: Int { moderationCount + reportsCount + claimsCount + businessApprovalsCount + missingImagesCount }
 
     func refreshStaffCounts() async {
         guard isAuthed else {
@@ -210,12 +212,14 @@ final class AppState: ObservableObject {
             reportsCount = 0
             claimsCount = 0
             businessApprovalsCount = 0
+            missingImagesCount = 0
             return
         }
         moderationCount = can(Perm.listingReview) ? ((try? await client().countPendingListings()) ?? moderationCount) : 0
         reportsCount = can(Perm.reportResolve) ? ((try? await client().countOpenReports()) ?? reportsCount) : 0
         claimsCount = can(Perm.claimResolve) ? ((try? await client().countPendingClaims()) ?? claimsCount) : 0
         businessApprovalsCount = can(Perm.businessApprove) ? ((try? await client().countPendingSponsors()) ?? businessApprovalsCount) : 0
+        missingImagesCount = can(Perm.listingReview) ? ((try? await client().countListingsMissingImages()) ?? missingImagesCount) : 0
     }
 
     /// Count of the member's own posts needing attention — drives the My Posts tab badge.

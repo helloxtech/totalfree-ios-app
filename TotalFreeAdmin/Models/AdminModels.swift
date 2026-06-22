@@ -312,6 +312,72 @@ struct NotificationData: Codable, Equatable {
     let claimId: String?
 }
 
+struct SavedSearch: Codable, Identifiable, Equatable {
+    let id: String
+    let userId: String
+    let label: String?
+    let query: String?
+    let category: String?
+    let sourceType: String?
+    let city: String?
+    let alertMode: String
+    let createdAt: String?
+
+    var title: String {
+        if let label, !label.isEmpty { return label }
+        if let query, !query.isEmpty { return query }
+        return "All free finds"
+    }
+
+    var details: String {
+        let categoryText: String? = {
+            guard let category, !category.isEmpty else { return nil }
+            return AppConstants.categoryLabel(category)
+        }()
+        let sourceText: String? = {
+            guard let sourceType, !sourceType.isEmpty else { return nil }
+            return AppConstants.sourceLabel(sourceType)
+        }()
+        return [
+            city?.isEmpty == false ? city : nil,
+            categoryText,
+            sourceText,
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+    }
+}
+
+struct NotificationPrefs: Codable, Equatable {
+    var userId: String?
+    var pushEnabled: Bool
+    var emailEnabled: Bool
+    var savedSearchAlerts: Bool
+    var requestUpdates: Bool
+    var messageAlerts: Bool
+    var sponsorOffers: Bool
+    var communityDigest: Bool
+    var quietHoursStart: Int?
+    var quietHoursEnd: Int?
+    var updatedAt: String?
+
+    static func defaults(userId: String? = nil) -> NotificationPrefs {
+        NotificationPrefs(
+            userId: userId,
+            pushEnabled: true,
+            emailEnabled: true,
+            savedSearchAlerts: true,
+            requestUpdates: true,
+            messageAlerts: true,
+            sponsorOffers: false,
+            communityDigest: true,
+            quietHoursStart: nil,
+            quietHoursEnd: nil,
+            updatedAt: nil
+        )
+    }
+}
+
 // MARK: - Admin users (from admin_list_users RPC)
 
 struct AdminUserRow: Codable, Identifiable, Equatable {
@@ -443,6 +509,29 @@ struct ScanCandidate: Codable, Identifiable, Equatable {
     var confidencePct: String? { confidence.map { "\(Int(($0 * 100).rounded()))%" } }
 }
 
+struct ModeratorDutyPerson: Codable, Identifiable, Equatable {
+    let userId: String
+    let name: String
+    let email: String?
+    let role: String?
+
+    var id: String { userId }
+    var displayRole: String { UserRole(rawValue: role ?? "moderator")?.label ?? "Moderator" }
+}
+
+struct ModeratorDutyShift: Codable, Identifiable, Equatable {
+    let dutyDate: String
+    let userId: String
+    let name: String
+    let email: String?
+    let role: String?
+
+    var id: String { "\(dutyDate)-\(userId)" }
+    var person: ModeratorDutyPerson {
+        ModeratorDutyPerson(userId: userId, name: name, email: email, role: role)
+    }
+}
+
 // MARK: - Insert / update / RPC bodies (snake_case = column/argument names)
 
 struct ListingInsert: Encodable {
@@ -500,6 +589,18 @@ struct NotificationReadUpdate: Encodable { let read: Bool }
 struct ProfileNameUpdate: Encodable { let name: String }
 struct ProfileAvatarUpdate: Encodable { let avatar_url: String }
 struct ProfileLocaleUpdate: Encodable { let preferred_locale: String }
+struct NotificationPrefsSeed: Encodable { let user_id: String }
+
+struct NotificationPrefsUpdate: Encodable {
+    let push_enabled: Bool
+    let email_enabled: Bool
+    let saved_search_alerts: Bool
+    let request_updates: Bool
+    let message_alerts: Bool
+    let sponsor_offers: Bool
+    let community_digest: Bool
+    let updated_at: String
+}
 
 struct ModerateListingParams: Encodable { let p_id: String; let p_status: String }
 struct SetUserRoleParams: Encodable { let target: String; let new_role: String }
@@ -508,6 +609,9 @@ struct CandidatesParams: Encodable { let p_status: String }
 struct ReviewCandidateParams: Encodable { let p_candidate: String; let p_approve: Bool; let p_reason: String? }
 struct ClaimListingParams: Encodable { let p_listing: String; let p_org_name: String; let p_website: String; let p_note: String }
 struct ResolveClaimParams: Encodable { let p_claim: String; let p_approve: Bool }
+struct ModeratorDutyListParams: Encodable { let p_start: String?; let p_days: Int }
+struct ModeratorDutySetParams: Encodable { let p_date: String; let p_user_ids: [String] }
+struct ModeratorDutyBulkParams: Encodable { let p_dates: [String]; let p_user_ids: [String] }
 struct SponsorStatusUpdate: Encodable { let status: String }
 struct ListingEditUpdate: Encodable {
     let title: String

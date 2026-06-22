@@ -26,21 +26,24 @@ struct MyStuffView: View {
                 } else if loading && listings.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if listings.isEmpty {
-                    EmptyState(title: "No posts yet", message: "Tap ＋ to give something away or post a wanted.", systemImage: "shippingbox")
+                    EmptyState(title: emptyTitle, message: emptyMessage, systemImage: "shippingbox")
                 } else {
                     List {
+                        Section {
+                            roleSummary
+                        }
                         if !offers.isEmpty {
                             Section {
                                 if showOffers { ForEach(offers) { postRow($0) } }
                             } header: {
-                                collapsibleHeader("Giving away", count: offers.count, expanded: $showOffers)
+                                collapsibleHeader(offersTitle, count: offers.count, expanded: $showOffers)
                             }
                         }
                         if !wanted.isEmpty {
                             Section {
                                 if showWanted { ForEach(wanted) { postRow($0) } }
                             } header: {
-                                collapsibleHeader("Wanted", count: wanted.count, expanded: $showWanted)
+                                collapsibleHeader(wantedTitle, count: wanted.count, expanded: $showWanted)
                             }
                         }
                     }
@@ -63,7 +66,7 @@ struct MyStuffView: View {
                     .refreshable { await reload() }
                 }
             }
-            .navigationTitle("My Posts")
+            .navigationTitle(myPostsTitle)
             .toolbar {
                 if appState.isAuthed {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -90,6 +93,26 @@ struct MyStuffView: View {
         .padding(.horizontal)
         .padding(.vertical, 6)
         .background(.bar)
+    }
+
+    private var roleSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: roleIcon)
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(roleSummaryTitle).font(.subheadline.weight(.semibold))
+                    Text(roleSummaryBody).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if appState.entityKind != "Member" {
+                Text("Posts here represent your \(appState.entityKind.lowercased()) account.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     // Explains the number on the My Posts tab badge (rejected posts need a fix).
@@ -141,6 +164,70 @@ struct MyStuffView: View {
     }
     private var offers: [Listing] { filtered.filter { $0.listingKind != "wanted" } }
     private var wanted: [Listing] { filtered.filter { $0.listingKind == "wanted" } }
+
+    private var myPostsTitle: String {
+        switch appState.entityKind {
+        case "Business": "My Business"
+        case "Organization": "My Organization"
+        default: "My Posts"
+        }
+    }
+
+    private var offersTitle: String {
+        switch appState.entityKind {
+        case "Business": "Free offers"
+        case "Organization": "Programs & resources"
+        default: "Giving away"
+        }
+    }
+
+    private var wantedTitle: String {
+        switch appState.entityKind {
+        case "Business": "Business requests"
+        case "Organization": "Community requests"
+        default: "Wanted"
+        }
+    }
+
+    private var roleIcon: String {
+        switch appState.entityKind {
+        case "Business": "storefront"
+        case "Organization": "building.2"
+        default: "person.2"
+        }
+    }
+
+    private var roleSummaryTitle: String {
+        switch appState.entityKind {
+        case "Business": "Business posting"
+        case "Organization": "Organization posting"
+        default: "Neighbour posting"
+        }
+    }
+
+    private var roleSummaryBody: String {
+        switch appState.entityKind {
+        case "Business": "Share genuinely free business offers and manage requests from neighbours."
+        case "Organization": "Share public programs, free resources, and organization-managed listings."
+        default: "Give items away, ask for things you need, and manage pickup conversations."
+        }
+    }
+
+    private var emptyTitle: String {
+        switch appState.entityKind {
+        case "Business": "No business offers yet"
+        case "Organization": "No organization posts yet"
+        default: "No posts yet"
+        }
+    }
+
+    private var emptyMessage: String {
+        switch appState.entityKind {
+        case "Business": "Tap + to post a genuinely free offer from your business."
+        case "Organization": "Tap + to share a free program, service, or resource."
+        default: "Tap + to give something away or post a wanted request."
+        }
+    }
 
     private func postRow(_ listing: Listing) -> some View {
         NavigationLink { ListingDetailView(listing: listing) } label: { ListingCard(listing: listing) }

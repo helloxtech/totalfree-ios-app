@@ -37,23 +37,51 @@ struct CandidatesView: View {
     }
 
     private func summary(_ c: ScanCandidate) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(c.title).font(.subheadline.weight(.semibold)).lineLimit(2)
-                Spacer()
-                if let pct = c.confidencePct {
-                    Text(pct).font(.caption2.bold())
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color.purple.opacity(0.15), in: Capsule())
-                        .foregroundStyle(.purple)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(c.title).font(.subheadline.weight(.semibold)).lineLimit(2)
+                    Text(subtitle(for: c)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
+                Spacer(minLength: 8)
+                confidenceBadge(c)
             }
-            HStack(spacing: 8) {
-                if let agent = c.agent { Label(agent, systemImage: "cpu").font(.caption2).foregroundStyle(.secondary) }
-                if let city = c.payload?.city { Label(city, systemImage: "mappin").font(.caption2).foregroundStyle(.secondary) }
+            if let quote = c.evidenceQuote, !quote.isEmpty {
+                Text(quote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
+    }
+
+    private func subtitle(for c: ScanCandidate) -> String {
+        let category = c.payload?.category.map(AppConstants.categoryLabel)
+        return [
+            category,
+            [c.payload?.area, c.payload?.city].compactMap { $0 }.first,
+            c.sourceDomain,
+            c.createdAt.map(relativeDate),
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+    }
+
+    private func confidenceBadge(_ c: ScanCandidate) -> some View {
+        Text(c.confidencePct ?? "Check")
+            .font(.caption2.bold())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(confidenceColor(c).opacity(0.15), in: Capsule())
+            .foregroundStyle(confidenceColor(c))
+    }
+
+    private func confidenceColor(_ c: ScanCandidate) -> Color {
+        guard let value = c.confidence else { return .orange }
+        if value >= 0.85 { return .green }
+        if value >= 0.65 { return .orange }
+        return .red
     }
 
     private func reload() async {
@@ -81,24 +109,60 @@ struct CandidateDetailView: View {
     var body: some View {
         List {
             Section {
-                Text(candidate.title).font(.headline)
-                if let agent = candidate.agent { LabeledContent("Found by", value: agent) }
-                if let pct = candidate.confidencePct { LabeledContent("Confidence", value: pct) }
-                if let dom = candidate.sourceDomain { LabeledContent("Source", value: dom) }
-                if let created = candidate.createdAt { LabeledContent("Queued", value: relativeDate(created)) }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(candidate.title).font(.title3.weight(.semibold))
+                    HStack {
+                        if let pct = candidate.confidencePct {
+                            Label(pct, systemImage: "gauge.with.dots.needle.bottom.50percent")
+                        } else {
+                            Label("Manual check", systemImage: "exclamationmark.magnifyingglass")
+                        }
+                        Spacer()
+                        StatusBadge(status: candidate.status)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+                }
+                .padding(.vertical, 4)
             }
             if let p = candidate.payload {
-                Section("Proposed listing") {
-                    if let city = p.city { LabeledContent("Area", value: [p.area, city].compactMap { $0 }.first ?? city) }
-                    if let cat = p.category { LabeledContent("Category", value: AppConstants.categoryLabel(cat)) }
-                    if let desc = p.description, !desc.isEmpty { Text(desc).font(.subheadline) }
+                Section("What will be published") {
+                    CandidateFactRow("Category", value: p.category.map(AppConstants.categoryLabel) ?? "Not provided", systemImage: "tag")
+                    CandidateFactRow("Area", value: [p.area, p.city].compactMap { $0 }.first ?? "Not provided", systemImage: "mappin")
+                    CandidateFactRow("Source", value: candidate.sourceDomain ?? "Unknown", systemImage: "link")
+                    if let agent = candidate.agent {
+                        CandidateFactRow("Scanner", value: agent, systemImage: "cpu")
+                    }
+                    if let created = candidate.createdAt {
+                        CandidateFactRow("Queued", value: relativeDate(created), systemImage: "clock")
+                    }
+                    if let desc = p.description, !desc.isEmpty {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Label("Description", systemImage: "text.alignleft")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(desc).font(.subheadline).lineLimit(6)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
             }
             if let q = candidate.evidenceQuote, !q.isEmpty {
-                Section("Evidence") { Text("“\(q)”").font(.subheadline).italic() }
+                Section("Evidence") {
+                    Text(q)
+                        .font(.subheadline)
+                        .italic()
+                        .textSelection(.enabled)
+                }
             }
             if let link = candidate.payload?.link, let u = URL(string: link) {
-                Section { Link(destination: u) { Label("Open source page", systemImage: "arrow.up.right.square") } }
+                Section {
+                    Link(destination: u) {
+                        Label("Open source page", systemImage: "arrow.up.right.square")
+                    }
+                } footer: {
+                    Text("Approve only if the source clearly says the offer is free, public, and still available.")
+                }
             }
             Section {
                 Button { Task { await review(approve: true) } } label: {
@@ -124,5 +188,30 @@ struct CandidateDetailView: View {
             await onResolved()
             dismiss()
         }
+    }
+}
+
+private struct CandidateFactRow: View {
+    let label: String
+    let value: String
+    let systemImage: String
+
+    init(_ label: String, value: String, systemImage: String) {
+        self.label = label
+        self.value = value
+        self.systemImage = systemImage
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(value).font(.subheadline).textSelection(.enabled)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }

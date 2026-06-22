@@ -116,8 +116,34 @@ struct AccountView: View {
                 }
             }
 
+            Section("Alerts & notifications") {
+                NavigationLink {
+                    SavedAlertsView()
+                } label: {
+                    Label("Saved alerts", systemImage: "bell.badge")
+                }
+                NavigationLink {
+                    NotificationSettingsView()
+                } label: {
+                    Label("Notification settings", systemImage: "slider.horizontal.3")
+                }
+                NavigationLink {
+                    NotificationsView()
+                } label: {
+                    Label("Notifications", systemImage: "bell")
+                }
+            }
+
             languageSection
             appearanceSection
+
+            Section("App") {
+                NavigationLink {
+                    AppInfoView()
+                } label: {
+                    Label("Version & updates", systemImage: "arrow.down.app")
+                }
+            }
 
             if !appState.isVerified {
                 Section {
@@ -251,5 +277,193 @@ struct AccountView: View {
         let parts = appState.displayName.split(separator: " ")
         let letters = parts.prefix(2).compactMap { $0.first }
         return String(letters).uppercased()
+    }
+}
+
+struct SavedAlertsView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var searches: [SavedSearch] = []
+    @State private var loading = false
+
+    var body: some View {
+        Group {
+            if loading && searches.isEmpty {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if searches.isEmpty {
+                EmptyState(
+                    title: "No saved alerts",
+                    message: "Save a search from Browse to get notified when matching free finds are posted.",
+                    systemImage: "bell.badge"
+                )
+            } else {
+                List {
+                    ForEach(searches) { search in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text(search.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                Spacer()
+                                Text(search.alertMode.capitalized)
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Theme.accent.opacity(0.12), in: Capsule())
+                                    .foregroundStyle(Theme.accent)
+                            }
+                            if !search.details.isEmpty {
+                                Text(search.details).font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text("All areas · all categories").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let created = search.createdAt {
+                                Text("Saved \(relativeDate(created))").font(.caption2).foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                Task { await delete(search) }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+            }
+        }
+        .navigationTitle("Saved alerts")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await reload() }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        guard let uid = appState.userId else { return }
+        loading = true
+        defer { loading = false }
+        if let rows = await appState.load({ try await $0.fetchSavedSearches(userId: uid) }) {
+            searches = rows
+        }
+    }
+
+    private func delete(_ search: SavedSearch) async {
+        let ok = await appState.perform { try await $0.deleteSavedSearch(id: search.id) }
+        if ok { searches.removeAll { $0.id == search.id } }
+    }
+}
+
+struct NotificationSettingsView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var prefs = NotificationPrefs.defaults()
+    @State private var loading = false
+    @State private var saving = false
+
+    var body: some View {
+        List {
+            Section {
+                Toggle("Push notifications", isOn: $prefs.pushEnabled)
+                Toggle("Email notifications", isOn: $prefs.emailEnabled)
+            } footer: {
+                Text("Push requires iOS notification permission. Email can be turned off without changing your account.")
+            }
+
+            Section {
+                Toggle("Saved search matches", isOn: $prefs.savedSearchAlerts)
+                Toggle("Request updates", isOn: $prefs.requestUpdates)
+                Toggle("Messages", isOn: $prefs.messageAlerts)
+                Toggle("Weekly community digest", isOn: $prefs.communityDigest)
+                Toggle("Local business free offers", isOn: $prefs.sponsorOffers)
+            } header: {
+                Text("What to send")
+            } footer: {
+                Text("Local business free offers are optional alerts from approved businesses offering something genuinely free.")
+            }
+
+            Section {
+                Button {
+                    Task { await save() }
+                } label: {
+                    HStack {
+                        Spacer()
+                        if saving { ProgressView() }
+                        else { Text("Save notification settings").bold() }
+                        Spacer()
+                    }
+                }
+                .disabled(saving || loading)
+            }
+        }
+        .navigationTitle("Notifications")
+        .navigationBarTitleDisplayMode(.inline)
+        .overlay {
+            if loading { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity).background(.thinMaterial) }
+        }
+        .task { await reload() }
+        .refreshable { await reload() }
+    }
+
+    private func reload() async {
+        guard let uid = appState.userId else { return }
+        loading = true
+        defer { loading = false }
+        if let row = await appState.load({ try await $0.fetchNotificationPrefs(userId: uid) }) {
+            prefs = row
+        }
+    }
+
+    private func save() async {
+        guard let uid = appState.userId else { return }
+        saving = true
+        let ok = await appState.perform { try await $0.updateNotificationPrefs(userId: uid, prefs: prefs) }
+        saving = false
+        if ok {
+            appState.infoMessage = "Notification settings saved."
+            await reload()
+        }
+    }
+}
+
+struct AppInfoView: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("App", value: "Total Free")
+                LabeledContent("Version", value: versionText)
+                LabeledContent("Backend", value: "totalfree.ca")
+            }
+
+            Section {
+                Button {
+                    checkForUpdates()
+                } label: {
+                    Label("Check for updates", systemImage: "arrow.down.app")
+                }
+                Link(destination: URL(string: "https://totalfree.ca")!) {
+                    Label("Open TotalFree.ca", systemImage: "safari")
+                }
+            } footer: {
+                Text("App Store and TestFlight builds update through Apple's update flow. This screen is ready for the store ID once the public listing is available.")
+            }
+        }
+        .navigationTitle("Version & updates")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var versionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "\(version) (\(build))"
+    }
+
+    private func checkForUpdates() {
+        if let storeId = Bundle.main.object(forInfoDictionaryKey: "TFAppStoreID") as? String,
+           !storeId.trimmingCharacters(in: .whitespaces).isEmpty,
+           let url = URL(string: "itms-apps://apps.apple.com/app/id\(storeId)") {
+            UIApplication.shared.open(url)
+        } else {
+            appState.infoMessage = "This build updates through TestFlight or the App Store."
+        }
     }
 }

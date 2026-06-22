@@ -79,6 +79,14 @@ extension SupabaseClient {
         )
     }
 
+    /// Active listings that need an image backfill or a moderator decision.
+    func fetchListingsMissingImages(limit: Int = 200) async throws -> [Listing] {
+        try await restGet(
+            "/rest/v1/listings?select=\(listingSelect)&status=eq.active&or=(image_url.is.null,image_url.eq.)&order=created_at.desc&limit=\(limit)",
+            as: [Listing].self
+        )
+    }
+
     @discardableResult
     func createListing(
         ownerId: String, title: String, description: String, category: String, kind: String,
@@ -228,6 +236,49 @@ extension SupabaseClient {
         )
     }
 
+    // MARK: Saved alerts + notification preferences
+
+    func fetchSavedSearches(userId: String) async throws -> [SavedSearch] {
+        try await restGet(
+            "/rest/v1/saved_searches?select=*&user_id=eq.\(userId)&order=created_at.desc",
+            as: [SavedSearch].self
+        )
+    }
+
+    func deleteSavedSearch(id: String) async throws {
+        try await restDeleteNoReturn("/rest/v1/saved_searches?id=eq.\(id)")
+    }
+
+    func fetchNotificationPrefs(userId: String) async throws -> NotificationPrefs {
+        let rows = try await restGet(
+            "/rest/v1/notification_prefs?select=*&user_id=eq.\(userId)&limit=1",
+            as: [NotificationPrefs].self
+        )
+        return rows.first ?? .defaults(userId: userId)
+    }
+
+    func updateNotificationPrefs(userId: String, prefs: NotificationPrefs) async throws {
+        try await restInsertNoReturn(
+            "notification_prefs",
+            body: NotificationPrefsSeed(user_id: userId),
+            prefer: "resolution=ignore-duplicates,return=minimal",
+            onConflict: "user_id"
+        )
+        try await restPatchNoReturn(
+            "/rest/v1/notification_prefs?user_id=eq.\(userId)",
+            body: NotificationPrefsUpdate(
+                push_enabled: prefs.pushEnabled,
+                email_enabled: prefs.emailEnabled,
+                saved_search_alerts: prefs.savedSearchAlerts,
+                request_updates: prefs.requestUpdates,
+                message_alerts: prefs.messageAlerts,
+                sponsor_offers: prefs.sponsorOffers,
+                community_digest: prefs.communityDigest,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+        )
+    }
+
     // MARK: Profile
 
     func fetchProfile(userId: String) async throws -> Profile? {
@@ -371,6 +422,36 @@ extension SupabaseClient {
         try await rpc("admin_review_candidate", params: ReviewCandidateParams(p_candidate: id, p_approve: approve, p_reason: reason))
     }
 
+    // MARK: Moderator duty (owner/admin)
+
+    func adminListModeratorDutyCandidates() async throws -> [ModeratorDutyPerson] {
+        try await rpcDecoded("admin_list_moderator_duty_candidates", params: EmptyParams(), as: [ModeratorDutyPerson].self)
+    }
+
+    func adminListModeratorDuty(startDate: String? = nil, days: Int = 14) async throws -> [ModeratorDutyShift] {
+        try await rpcDecoded(
+            "admin_list_moderator_duty",
+            params: ModeratorDutyListParams(p_start: startDate, p_days: days),
+            as: [ModeratorDutyShift].self
+        )
+    }
+
+    func adminSetModeratorDuty(date: String, userIds: [String]) async throws -> [ModeratorDutyShift] {
+        try await rpcDecoded(
+            "admin_set_moderator_duty",
+            params: ModeratorDutySetParams(p_date: date, p_user_ids: userIds),
+            as: [ModeratorDutyShift].self
+        )
+    }
+
+    func adminSetModeratorDutyBulk(dates: [String], userIds: [String]) async throws -> [ModeratorDutyShift] {
+        try await rpcDecoded(
+            "admin_set_moderator_duty_bulk",
+            params: ModeratorDutyBulkParams(p_dates: dates, p_user_ids: userIds),
+            as: [ModeratorDutyShift].self
+        )
+    }
+
     // MARK: Pipeline / analytics (analytics.view)
 
     func fetchPipelineStats() async throws -> [String: JSONValue] {
@@ -422,6 +503,10 @@ extension SupabaseClient {
 
     func countPendingListings() async throws -> Int {
         try await count("/rest/v1/listings?status=eq.pending_review")
+    }
+
+    func countListingsMissingImages() async throws -> Int {
+        try await count("/rest/v1/listings?status=eq.active&or=(image_url.is.null,image_url.eq.)")
     }
 
     func countOpenReports() async throws -> Int {
