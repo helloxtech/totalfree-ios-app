@@ -8,6 +8,7 @@ struct BrowseView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var browseLocation = LocationProvider()
 
+    @State private var listingCandidates: [Listing] = []
     @State private var listings: [Listing] = []
     @State private var query = ""
     @State private var category = ""
@@ -19,6 +20,8 @@ struct BrowseView: View {
     @State private var postShortcut: BrowsePostShortcut?
     @State private var browseOrigin = BrowseLocationDefaults.semiahmooSecondary
 
+    private static let visibleListingLimit = 48
+    private static let distanceSortPoolLimit = 1_000
     private let kind = "offer"
     private let gridColumns = [
         GridItem(.flexible(minimum: 0), spacing: 12, alignment: .top),
@@ -52,7 +55,7 @@ struct BrowseView: View {
             }
             .onReceive(browseLocation.$coordinate.compactMap { $0 }) { coordinate in
                 browseOrigin = coordinate
-                listings = rankedListings(listings, from: coordinate)
+                listings = visibleListings(from: listingCandidates, origin: coordinate)
             }
             .onChange(of: category) { _, _ in Task { await reload() } }
             .onChange(of: sourceType) { _, _ in Task { await reload() } }
@@ -229,10 +232,17 @@ struct BrowseView: View {
         let result = await appState.load {
             try await $0.searchListings(
                 text: query, city: "", category: category,
-                sourceType: sourceType, kind: kind, excludeCategories: ["learning"], limit: 48
+                sourceType: sourceType, kind: kind, excludeCategories: ["learning"], limit: Self.distanceSortPoolLimit
             )
         }
-        if let result { listings = rankedListings(result, from: browseOrigin) }
+        if let result {
+            listingCandidates = result
+            listings = visibleListings(from: result, origin: browseOrigin)
+        }
+    }
+
+    private func visibleListings(from items: [Listing], origin: CLLocationCoordinate2D) -> [Listing] {
+        Array(rankedListings(items, from: origin).prefix(Self.visibleListingLimit))
     }
 
     private func rankedListings(_ items: [Listing], from origin: CLLocationCoordinate2D) -> [Listing] {

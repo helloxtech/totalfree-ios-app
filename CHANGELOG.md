@@ -4,8 +4,9 @@
 
 ### Changed
 
-- Browse now asks for location on open and ranks loaded listings nearest-first.
-  If location is unavailable, ranking falls back to Semiahmoo Secondary School.
+- Browse now asks for location on open and ranks a broader candidate pool
+  nearest-first before showing the first list page. If location is unavailable,
+  ranking falls back to Semiahmoo Secondary School.
 
 ## Unreleased — 2026-06-18 — Mobile social sign-in
 
