@@ -1,10 +1,12 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import Combine
 
 /// Public neighbourhood feed. Works fully signed-out.
 struct BrowseView: View {
     @EnvironmentObject private var appState: AppState
+    @StateObject private var browseLocation = LocationProvider()
 
     @State private var listings: [Listing] = []
     @State private var query = ""
@@ -15,6 +17,7 @@ struct BrowseView: View {
     @State private var showMap = false
     @State private var mapSelection: Listing?
     @State private var postShortcut: BrowsePostShortcut?
+    @State private var browseOrigin = BrowseLocationDefaults.semiahmooSecondary
 
     private let kind = "offer"
     private let gridColumns = [
@@ -40,7 +43,17 @@ struct BrowseView: View {
             .sheet(item: $postShortcut) { shortcut in
                 PostView(initialKind: shortcut.kind, asSheet: true)
             }
-            .task { if !loaded { await reload(); loaded = true } }
+            .task {
+                if !loaded {
+                    browseLocation.requestWhenInUse()
+                    await reload()
+                    loaded = true
+                }
+            }
+            .onReceive(browseLocation.$coordinate.compactMap { $0 }) { coordinate in
+                browseOrigin = coordinate
+                listings = rankedListings(listings, from: coordinate)
+            }
             .onChange(of: category) { _, _ in Task { await reload() } }
             .onChange(of: sourceType) { _, _ in Task { await reload() } }
         }
@@ -219,7 +232,59 @@ struct BrowseView: View {
                 sourceType: sourceType, kind: kind, excludeCategories: ["learning"], limit: 48
             )
         }
-        if let result { listings = result }
+        if let result { listings = rankedListings(result, from: browseOrigin) }
+    }
+
+    private func rankedListings(_ items: [Listing], from origin: CLLocationCoordinate2D) -> [Listing] {
+        items.sorted { lhs, rhs in
+            let lhsDistance = distanceKm(from: origin, to: lhs)
+            let rhsDistance = distanceKm(from: origin, to: rhs)
+
+            switch (lhsDistance, rhsDistance) {
+            case let (lhs?, rhs?) where lhs != rhs:
+                return lhs < rhs
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            default:
+                return fallbackLess(lhs, rhs)
+            }
+        }
+    }
+
+    private func distanceKm(from origin: CLLocationCoordinate2D, to listing: Listing) -> Double? {
+        guard let lat = listing.lat, let lng = listing.lng else { return nil }
+        let earthRadiusKm = 6371.0
+        let deltaLat = (lat - origin.latitude) * .pi / 180
+        let deltaLng = (lng - origin.longitude) * .pi / 180
+        let originLat = origin.latitude * .pi / 180
+        let listingLat = lat * .pi / 180
+        let a = sin(deltaLat / 2) * sin(deltaLat / 2)
+            + cos(originLat) * cos(listingLat) * sin(deltaLng / 2) * sin(deltaLng / 2)
+        return earthRadiusKm * 2 * atan2(sqrt(a), sqrt(1 - a))
+    }
+
+    private func fallbackLess(_ lhs: Listing, _ rhs: Listing) -> Bool {
+        let lhsSource = sourceRank(lhs.sourceType)
+        let rhsSource = sourceRank(rhs.sourceType)
+        if lhsSource != rhsSource { return lhsSource < rhsSource }
+
+        let lhsCreated = lhs.createdAt ?? ""
+        let rhsCreated = rhs.createdAt ?? ""
+        if lhsCreated != rhsCreated { return lhsCreated > rhsCreated }
+
+        return lhs.id < rhs.id
+    }
+
+    private func sourceRank(_ sourceType: String) -> Int {
+        switch sourceType {
+        case "totalfree": return 0
+        case "partner": return 1
+        case "government": return 2
+        case "sponsored": return 3
+        default: return 4
+        }
     }
 }
 
@@ -229,6 +294,10 @@ private enum BrowsePostShortcut: String, Identifiable {
 
     var id: String { rawValue }
     var kind: String { rawValue }
+}
+
+private enum BrowseLocationDefaults {
+    static let semiahmooSecondary = CLLocationCoordinate2D(latitude: 49.0353026, longitude: -122.8128939)
 }
 
 private struct CategoryFilterChip: View {
@@ -415,17 +484,44 @@ private struct TileSourceBadge: View {
     }
 }
 
-/// Minimal Core Location helper — just asks for When-In-Use authorization so the
-/// map's user-location button and blue dot light up. The Map itself tracks the
-/// position; we don't need to consume individual fixes.
-@MainActor
-final class LocationProvider: NSObject, ObservableObject {
+/// Minimal Core Location helper for browse ranking and the map's user-location button.
+final class LocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published private(set) var coordinate: CLLocationCoordinate2D?
+
     private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+    }
+
     func requestWhenInUse() {
-        if manager.authorizationStatus == .notDetermined {
+        switch manager.authorizationStatus {
+        case .notDetermined:
             manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.requestLocation()
+        default:
+            break
         }
     }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else {
+            return
+        }
+        manager.requestLocation()
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let coordinate = locations.last?.coordinate else { return }
+        DispatchQueue.main.async {
+            self.coordinate = coordinate
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 }
 
 /// Map of free items by area. Loads pins for the visible region (not the

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — 2026-06-26 — Location-first browse
+
+### Changed
+
+- Browse now asks for location on open and ranks loaded listings nearest-first.
+  If location is unavailable, ranking falls back to Semiahmoo Secondary School.
+
 ## Unreleased — 2026-06-18 — Mobile social sign-in
 
 ### Added
